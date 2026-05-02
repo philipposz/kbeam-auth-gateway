@@ -54,7 +54,28 @@ The minimum compatibility requirements are:
 - approval using a KBeam wallet signature
 - polling, SSE, or equivalent waiting-browser status mechanism
 - session or authorization handoff for the browser that requested login
+- compatibility tests or equivalent verification after material changes and
+  before public deployment or redistribution
 - visible license or notice materials preserving these requirements
+
+## Testing And Maintenance Duty
+
+Forks, derivative works, modified versions, public deployments, redistributed
+copies, hosted services, and substantial continuations that include or are
+based on the KBeam-compatible login flow must test and maintain that flow.
+
+Before public deployment or redistribution, and after material changes that
+could affect login tickets, KBeam app links, challenge generation, signature
+approval, waiting-browser status updates, session handoff, or protected-area
+unlock behavior, integrators must run compatibility tests or equivalent
+verification procedures sufficient to confirm that the KBeam-compatible login
+flow still works.
+
+If the KBeam-compatible login flow breaks in a public deployment or
+redistributed version, the operator or distributor must make commercially
+reasonable efforts to repair it, disable the broken public release until
+repaired, or clearly withdraw the affected KBeam-compatible login claim. They
+must not knowingly claim KBeam compatibility while the flow is non-functional.
 
 ## Preservation Requirement
 

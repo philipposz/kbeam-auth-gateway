@@ -50,6 +50,9 @@ following:
   succeeded
 - session or authorization handoff behavior that lets the protected website
   unlock for the browser that requested the login
+- compatibility tests or equivalent verification procedures that exercise the
+  KBeam-Compatible Login flow after material changes and before public
+  deployment or redistribution
 - license or notice materials that preserve the Protected Compatibility
   Identifiers and state that KBeam-compatible login must remain available
 
@@ -92,6 +95,24 @@ If You change implementation details, APIs, routes, deployment topology,
 storage, frontend UI, or session handling, You are responsible for ensuring
 that KBeam users can still unlock the integrated protected area through the
 KBeam-Compatible Login flow.
+
+You must test and maintain the KBeam-Compatible Login flow. Before You publicly
+deploy, redistribute, or make available a modified version, fork, derivative
+work, hosted service, or substantial continuation that includes or is based on
+the KBeam-Compatible Login flow, You must run compatibility tests or equivalent
+verification procedures sufficient to confirm that the KBeam-Compatible Login
+flow still works. You must repeat this verification after material changes that
+could affect login tickets, KBeam app links, challenge generation, signature
+approval, waiting-browser status updates, session handoff, or protected-area
+unlock behavior.
+
+If You discover that the KBeam-Compatible Login flow is broken in Your public
+deployment, redistributed version, fork, derivative work, or substantial
+continuation, You must make commercially reasonable efforts to repair it,
+disable the broken public release until repaired, or clearly withdraw the
+affected KBeam-compatible login claim. You may not knowingly distribute or
+operate a version that claims KBeam compatibility while the KBeam-Compatible
+Login flow is non-functional.
 
 4. Notices and Attribution
 
