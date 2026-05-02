@@ -525,6 +525,16 @@
       const liveStatus = document.querySelector("#liveStatus");
       const toast = document.querySelector("#toast");
       const log = document.querySelector("#log");
+      const routePrefix = (() => {
+        const marker = "/demo";
+        return window.location.pathname.endsWith(marker)
+          ? window.location.pathname.slice(0, -marker.length)
+          : "";
+      })();
+
+      function appPath(path) {
+        return `${routePrefix}${path}`;
+      }
 
       function show(value) {
         log.textContent = JSON.stringify(value, null, 2);
@@ -539,7 +549,7 @@
       }
 
       async function request(path, options = {}) {
-        const response = await fetch(path, {
+        const response = await fetch(appPath(path), {
           credentials: "include",
           headers: { "Accept": "application/json", ...(options.headers || {}) },
           ...options,
@@ -702,7 +712,9 @@
           return;
         }
         const query = new URLSearchParams({ pollToken: state.ticket.pollToken });
-        state.eventSource = new EventSource(`/api/auth/device-login/${state.ticket.ticketId}/events?${query}`);
+        state.eventSource = new EventSource(
+          appPath(`/api/auth/device-login/${state.ticket.ticketId}/events?${query}`)
+        );
         state.eventSource.addEventListener("status", (event) => {
           const payload = JSON.parse(event.data);
           show(payload);

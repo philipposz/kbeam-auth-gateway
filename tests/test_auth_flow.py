@@ -156,6 +156,8 @@ def test_demo_page_is_served():
     assert "logoutSuccess" in response.text
     assert "renderQrMessage" in response.text
     assert "qr.classList.add(statusClass)" in response.text
+    assert "routePrefix" in response.text
+    assert "appPath(`/api/auth/device-login/" in response.text
     assert "assets/kbeam-logo.png" in response.text
     assert "startDeviceLogin({ silent: true })" in response.text
     assert "createPanel" not in response.text
