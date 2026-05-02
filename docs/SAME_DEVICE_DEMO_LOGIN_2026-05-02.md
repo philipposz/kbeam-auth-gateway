@@ -19,7 +19,7 @@ KBeam can use that value to return to the browser after the wallet approval.
 - The first QR code is created on page load so visitors can scan immediately.
 - The same-device button adds `returnTo` only to the opened app URL.
 - Demo API calls are route-prefix aware, so the page can run at `/demo` or
-  behind a subpath such as `/auth-gateway-test/demo`.
+  behind a subpath such as `/auth-gateway-test/` or `/auth-gateway-test/demo`.
 - The demo continues to listen via SSE.
 - When the browser becomes visible or focused again, it polls the ticket once
   immediately. This covers mobile browsers that pause SSE while KBeam is in the

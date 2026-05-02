@@ -527,9 +527,11 @@
       const log = document.querySelector("#log");
       const routePrefix = (() => {
         const marker = "/demo";
-        return window.location.pathname.endsWith(marker)
-          ? window.location.pathname.slice(0, -marker.length)
-          : "";
+        const path = window.location.pathname.replace(/\/+$/, "");
+        if (path.endsWith(marker)) {
+          return path.slice(0, -marker.length);
+        }
+        return path;
       })();
 
       function appPath(path) {
