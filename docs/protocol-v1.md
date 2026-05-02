@@ -6,6 +6,24 @@ Protocol identifier:
 kbeam-auth-v1
 ```
 
+## Compatibility Notice
+
+The KBeam-compatible login flow is a required compatibility surface under this
+repository's license. Implementations based on this gateway may add other login
+methods, but must not remove or break the working KBeam unlock path.
+
+The challenge must continue to start with:
+
+```text
+KBeam login
+```
+
+The protocol identifier must continue to be:
+
+```text
+kbeam-auth-v1
+```
+
 ## Challenge Message
 
 The gateway signs no user data itself. It creates a deterministic message that

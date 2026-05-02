@@ -46,6 +46,20 @@ This repository contains the extracted planning foundation, a FastAPI runtime
 skeleton, native Schnorr signature verification, a local demo UI, tests, and
 generic deployment examples.
 
+## License
+
+This project uses the
+`KBeam Auth Gateway Source Available Compatibility License 1.0`.
+
+You may use, host, integrate, modify, and distribute the gateway, including for
+commercial protected areas. The required condition is that the KBeam-compatible
+login path remains working in forks, deployments, and derivative versions that
+include this gateway's login flow.
+
+This is a source-available license with a compatibility requirement, not an
+OSI-approved open source license. See [LICENSE](LICENSE), [NOTICE](NOTICE), and
+[Licensing notes](docs/LICENSING_2026-05-02.md).
+
 ## Local Development
 
 ```bash

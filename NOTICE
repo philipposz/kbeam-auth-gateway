@@ -1,0 +1,21 @@
+KBeam Auth Gateway Notice
+
+Licensor and copyright holder:
+Philippos Zachiridis
+
+Contact:
+support@kbeam.app
+
+Product and compatibility identity:
+KBeam Auth Gateway is designed to preserve compatibility with the KBeam wallet
+application. The KBeam-compatible login flow must remain available in forks,
+deployments, and derivative versions that include this gateway's login flow.
+
+Brand reservation:
+The KBeam name, logo, icons, visual identity, and other brand assets are
+reserved. They may be used only for accurate compatibility references and for
+the KBeam-compatible login flow as allowed by the license.
+
+License:
+KBeam Auth Gateway Source Available Compatibility License 1.0
+

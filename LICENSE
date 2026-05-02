@@ -1,0 +1,140 @@
+KBeam Auth Gateway Source Available Compatibility License 1.0
+
+Copyright (c) 2026 Philippos Zachiridis
+
+This license applies to the KBeam Auth Gateway software and associated
+documentation files in this repository, except for third-party materials that
+state a different license.
+
+This is a source-available software license with a mandatory compatibility
+condition. It is not an OSI-approved open source license.
+
+1. Definitions
+
+"Software" means the source code, documentation, examples, demo files, and
+other materials made available in this repository under this license.
+
+"Licensor" means Philippos Zachiridis.
+
+"You" means any person or legal entity receiving, using, modifying, deploying,
+or distributing the Software.
+
+"KBeam-Compatible Login" means the login flow implemented by the Software that
+allows a waiting website or protected application to be unlocked by the KBeam
+wallet application through the KBeam auth protocol.
+
+"Protected Compatibility Identifiers" means the identifiers required for
+KBeam-Compatible Login, including:
+
+- the challenge opening line "KBeam login"
+- the protocol identifier "kbeam-auth-v1"
+- the KBeam app login URI scheme and route "kbeam://pos-login"
+- the KBeam auth configuration and integration identifiers that begin with
+  "KBEAM" or "kbeam" and are used to preserve KBeam auth compatibility
+
+2. License Grant
+
+Subject to this license, Licensor grants You a worldwide, royalty-free,
+non-exclusive license to:
+
+- use, run, and host the Software
+- copy the Software
+- modify the Software
+- integrate the Software into websites, services, protected areas, internal
+  systems, and commercial or non-commercial products
+- distribute the Software or modified versions of the Software
+- make the Software available as part of a hosted service
+
+3. Mandatory KBeam Compatibility
+
+You may modify, extend, brand, configure, or integrate the Software, but every
+copy, fork, hosted deployment, and derivative version that includes or is based
+on the KBeam-Compatible Login flow must preserve a working KBeam-Compatible
+Login path.
+
+You must not remove, rename, disable, obscure, break, or make non-functional
+the KBeam-Compatible Login flow or the Protected Compatibility Identifiers.
+
+You may add other login methods, wallet providers, access policies, user
+systems, payment flows, or application-specific authorization layers, provided
+that the KBeam-Compatible Login flow remains available and interoperable with
+the KBeam wallet application.
+
+If You change implementation details, APIs, routes, deployment topology,
+storage, frontend UI, or session handling, You are responsible for ensuring
+that KBeam users can still unlock the integrated protected area through the
+KBeam-Compatible Login flow.
+
+4. Notices and Attribution
+
+If You distribute the Software or a modified version of it, You must include:
+
+- this license
+- the copyright notice above
+- a clear notice that the software is based on KBeam Auth Gateway, if the
+  distributed version contains substantial portions of the Software
+
+If You modify the Software, You must not state or imply that Your modified
+version is an official KBeam release unless Licensor has separately authorized
+that in writing.
+
+5. Brand and Trademark Reservation
+
+The KBeam name, KBeam logo, KBeam icons, visual identity, trade dress,
+marketing copy, and other brand assets are reserved by Licensor.
+
+This license allows You to use the KBeam name only as needed to describe
+accurate compatibility with KBeam and to preserve the KBeam-Compatible Login
+flow required by this license. It does not grant You ownership of, or a general
+branding license to, the KBeam marks.
+
+You must not use KBeam marks in a way that falsely suggests endorsement,
+certification, partnership, or official status.
+
+6. Operator Responsibility
+
+You are solely responsible for Your use, deployment, integration, and
+modification of the Software.
+
+You are responsible for security, access control, wallet allowlists, rate
+limits, database configuration, privacy compliance, legal compliance, user
+support, backups, monitoring, incident response, and all consequences of Your
+deployment or modified version.
+
+Licensor does not operate, audit, approve, secure, or supervise Your deployment
+unless that is agreed separately in writing.
+
+7. No Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, SECURITY, AVAILABILITY, NON-INFRINGEMENT,
+OR COMPATIBILITY WITH ANY PARTICULAR SYSTEM.
+
+8. Limitation of Liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, LICENSOR WILL NOT BE LIABLE FOR ANY
+CLAIM, DAMAGE, LOSS, LIABILITY, COST, OR EXPENSE ARISING FROM OR RELATED TO
+THE SOFTWARE, YOUR USE OF THE SOFTWARE, YOUR MODIFICATIONS, YOUR DEPLOYMENT,
+YOUR USERS, YOUR DATA, OR YOUR INTEGRATION OF THE SOFTWARE.
+
+9. Third-Party Materials
+
+Third-party dependencies, libraries, protocols, tools, or assets remain subject
+to their own license terms. This license does not override third-party license
+terms.
+
+10. Termination and Cure
+
+If You violate this license, Your rights under this license terminate
+automatically.
+
+If the violation is capable of cure and You cure it within 30 days after
+becoming aware of it, Your rights are reinstated from the date of cure. A
+repeated or intentional violation of the Mandatory KBeam Compatibility section
+does not have to be accepted as cured by Licensor.
+
+11. Governing Law
+
+Unless mandatory law requires otherwise, this license is governed by the laws
+of the Federal Republic of Germany, excluding conflict-of-law rules.
