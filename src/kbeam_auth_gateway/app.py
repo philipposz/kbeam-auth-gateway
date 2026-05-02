@@ -9,7 +9,7 @@ from typing import Annotated
 from urllib.parse import parse_qsl, urlparse, urlencode
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 
 from .config import Settings
 from .models import (
@@ -300,6 +300,10 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
     @app.get("/demo", response_class=HTMLResponse)
     def demo_page():
         return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
+    @app.get("/assets/kbeam-logo.png")
+    def kbeam_logo():
+        return FileResponse(STATIC_DIR / "kbeam-logo.png", media_type="image/png")
 
     @app.post(
         "/api/auth/device-login",

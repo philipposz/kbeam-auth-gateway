@@ -153,16 +153,30 @@ def test_demo_page_is_served():
     assert "KBeam Auth Gateway Demo" in response.text
     assert "/api/auth/device-login" in response.text
     assert "Success. Protected area unlocked." in response.text
-    assert "createPanel" in response.text
+    assert "logoutSuccess" in response.text
+    assert "assets/kbeam-logo.png" in response.text
+    assert "startDeviceLogin({ silent: true })" in response.text
+    assert "createPanel" not in response.text
+    assert "Check ticket" not in response.text
     assert "EventSource" in response.text
     assert "Ticket expired" in response.text
-    assert "Open in KBeam" in response.text
+    assert "Unlock with KBeam" in response.text
     assert "Share on X" in response.text
     assert "https://x.com/kbeam_app?s=21" in response.text
     assert "appendDeviceLoginReturnTo" in response.text
     assert "visibilitychange" in response.text
     assert "Never log in again." in response.text
     assert "Use KBeam." in response.text
+
+
+def test_kbeam_logo_asset_is_served():
+    client = TestClient(create_app(settings=_settings(allowed_wallets=()), store=InMemoryStore()))
+
+    response = client.get("/assets/kbeam-logo.png")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content.startswith(b"\x89PNG")
 
 
 def test_qr_svg_has_white_background_and_scan_get_page():

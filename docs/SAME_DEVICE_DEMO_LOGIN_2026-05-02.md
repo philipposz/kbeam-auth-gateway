@@ -2,8 +2,9 @@
 
 ## Purpose
 
-The demo page supports same-device login for mobile browsers. After a login
-ticket is created, the `Open in KBeam` button opens the ticket's
+The demo page supports same-device login for mobile browsers. The first login
+ticket is created automatically when the page opens. The `Unlock with KBeam`
+button opens the ticket's
 `kbeam://pos-login` URL and appends:
 
 ```text
@@ -15,6 +16,7 @@ KBeam can use that value to return to the browser after the wallet approval.
 ## Browser Behavior
 
 - The QR code remains suitable for cross-device login.
+- The first QR code is created on page load so visitors can scan immediately.
 - The same-device button adds `returnTo` only to the opened app URL.
 - The demo continues to listen via SSE.
 - When the browser becomes visible or focused again, it polls the ticket once
@@ -22,7 +24,11 @@ KBeam can use that value to return to the browser after the wallet approval.
   foreground.
 - The redesigned demo keeps a large visible success state so a returned browser
   clearly shows that the protected area was unlocked.
+- The success state includes a local logout button for clearing the demo
+  session after testing.
 - The demo includes a share action for X that opens `https://x.com/kbeam_app?s=21`.
+- The top navigation uses the public KBeam logo copied into this repository as
+  `src/kbeam_auth_gateway/static/kbeam-logo.png`.
 
 ## Compatibility
 
@@ -33,6 +39,10 @@ return to the demo page will not happen.
 ## Rollback
 
 1. Remove the `openKbeam` button from `src/kbeam_auth_gateway/static/index.html`.
-2. Remove `appendDeviceLoginReturnTo` and the focus/visibility polling hooks.
-3. Restore `approveUrl.value` to show the raw ticket `approveURL`.
-4. Run the test suite and redeploy.
+2. Remove the automatic `startDeviceLogin({ silent: true })` call at the end of
+   the demo script.
+3. Remove `appendDeviceLoginReturnTo` and the focus/visibility polling hooks.
+4. Restore `approveUrl.value` to show the raw ticket `approveURL`.
+5. Remove the logo asset route and `src/kbeam_auth_gateway/static/kbeam-logo.png`
+   if the text-only brand mark should be restored.
+6. Run the test suite and redeploy.
