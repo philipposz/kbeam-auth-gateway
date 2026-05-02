@@ -58,7 +58,8 @@ include this gateway's login flow.
 
 This is a source-available license with a compatibility requirement, not an
 OSI-approved open source license. See [LICENSE](LICENSE), [NOTICE](NOTICE), and
-[Licensing notes](docs/LICENSING_2026-05-02.md).
+[Licensing notes](docs/LICENSING_2026-05-02.md). KBeam brand usage is covered
+by [TRADEMARKS.md](TRADEMARKS.md).
 
 ## Local Development
 

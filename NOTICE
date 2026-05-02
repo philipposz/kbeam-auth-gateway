@@ -32,6 +32,23 @@ Protected compatibility identifiers:
 - kbeam://pos-login
 - KBEAM/kbeam auth identifiers used to preserve KBeam auth compatibility
 
+Minimum compatibility requirements:
+- challenge opening line: KBeam login
+- protocol identifier: kbeam-auth-v1
+- app approval URI compatible with kbeam://pos-login
+- challenge creation for a pending ticket
+- approval using a KBeam wallet signature
+- polling, SSE, or equivalent waiting-browser status mechanism
+- session or authorization handoff for the browser that requested login
+- visible license or notice materials preserving these requirements
+
+Hosted deployments:
+Publicly accessible hosted deployments based on KBeam Auth Gateway or on the
+KBeam-compatible login flow must make the license name, Licensor attribution,
+compatibility notice, and protected compatibility identifiers reasonably
+accessible in a legal page, about page, documentation page, source repository,
+admin documentation, or other normal notice location.
+
 Brand reservation:
 The KBeam name, logo, icons, visual identity, and other brand assets are
 reserved. They may be used only for accurate compatibility references and for

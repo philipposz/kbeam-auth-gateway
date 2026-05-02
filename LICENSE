@@ -33,6 +33,25 @@ KBeam-Compatible Login, including:
 - the KBeam auth configuration and integration identifiers that begin with
   "KBEAM" or "kbeam" and are used to preserve KBeam auth compatibility
 
+"Minimum Compatibility Requirements" means that a copy, fork, deployment,
+modified version, derivative work, or substantial continuation that includes or
+is based on the KBeam-Compatible Login flow must continue to provide all of the
+following:
+
+- a login challenge whose first line is "KBeam login"
+- the protocol identifier "kbeam-auth-v1"
+- an app approval URI compatible with "kbeam://pos-login"
+- a challenge creation path that allows the KBeam wallet application to obtain
+  the login challenge for a pending ticket
+- an approval path that accepts a KBeam wallet signature for that challenge
+- a waiting-browser status path, such as polling, SSE, or an equivalent event
+  mechanism, that lets the protected website learn that the KBeam approval
+  succeeded
+- session or authorization handoff behavior that lets the protected website
+  unlock for the browser that requested the login
+- license or notice materials that preserve the Protected Compatibility
+  Identifiers and state that KBeam-compatible login must remain available
+
 2. License Grant
 
 Subject to this license, Licensor grants You a worldwide, royalty-free,
@@ -56,6 +75,13 @@ Login path.
 You must not remove, rename, disable, obscure, break, or make non-functional
 the KBeam-Compatible Login flow or the Protected Compatibility Identifiers.
 
+You must satisfy the Minimum Compatibility Requirements in every copy, fork,
+hosted deployment, modified version, derivative work, redistributed copy,
+hosted source release, and substantial continuation that includes or is based
+on the KBeam-Compatible Login flow, even if You rename the project, reorganize
+the code, change the API surface, change the UI, change the storage layer, or
+add other login methods.
+
 You may add other login methods, wallet providers, access policies, user
 systems, payment flows, or application-specific authorization layers, provided
 that the KBeam-Compatible Login flow remains available and interoperable with
@@ -72,11 +98,13 @@ If You distribute the Software or a modified version of it, You must include:
 
 - this license
 - the copyright notice above
-- the NOTICE file or an equivalent notice that preserves the KBeam name,
-  Licensor name, Licensor contact details, license name, and compatibility
-  identity
+- the NOTICE file or an equivalent notice that, at minimum, preserves the
+  KBeam name, Licensor name, Licensor contact details, license name,
+  Protected Compatibility Identifiers, Minimum Compatibility Requirements, and
+  statement that KBeam-compatible login must remain available
 - a clear notice that the software is based on KBeam Auth Gateway, if the
-  distributed version contains substantial portions of the Software
+  distributed version contains substantial portions of the Software or uses the
+  KBeam-Compatible Login flow
 
 You must preserve these notices in every fork, derivative work, modified
 version, redistributed copy, hosted source release, and substantial
@@ -93,6 +121,19 @@ notices for Your original additions, but You must keep the KBeam Auth Gateway
 license notice, Licensor attribution, and Protected Compatibility Identifiers
 intact and visible in the license or notice materials distributed with that
 work.
+
+If You operate a publicly accessible hosted deployment based on the Software
+or on the KBeam-Compatible Login flow, You must make the license name, Licensor
+attribution, compatibility notice, and Protected Compatibility Identifiers
+reasonably accessible to operators or users of that deployment, for example in
+a legal page, about page, documentation page, source repository, admin
+documentation, or other notice location normally used by that deployment.
+
+You must not apply additional license terms, service terms, technical measures,
+or downstream restrictions that remove, contradict, hide, disable, or override
+the Mandatory KBeam Compatibility section, the Minimum Compatibility
+Requirements, the Licensor attribution, or the preservation obligations in this
+section.
 
 If You modify the Software, You must not state or imply that Your modified
 version is an official KBeam release unless Licensor has separately authorized

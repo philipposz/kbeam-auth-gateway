@@ -45,6 +45,17 @@ Integrators may add other login methods, wallet providers, policies, routes, UI,
 storage systems, and authorization rules. They may not remove or break the
 working KBeam-compatible login path.
 
+The minimum compatibility requirements are:
+
+- challenge opening line: `KBeam login`
+- protocol identifier: `kbeam-auth-v1`
+- app approval URI compatible with `kbeam://pos-login`
+- challenge creation for a pending ticket
+- approval using a KBeam wallet signature
+- polling, SSE, or equivalent waiting-browser status mechanism
+- session or authorization handoff for the browser that requested login
+- visible license or notice materials preserving these requirements
+
 ## Preservation Requirement
 
 Forks, derivative works, modified versions, redistributed copies, hosted source
@@ -59,6 +70,24 @@ releases, and substantial continuations based on this gateway must preserve:
 Integrators may add their own attribution, product names, notices, and license
 terms for their original additions, but those additions must not remove or hide
 the KBeam Auth Gateway license notice or compatibility requirement.
+
+Publicly accessible hosted deployments based on this gateway or the
+KBeam-compatible login flow must make the license name, Licensor attribution,
+compatibility notice, and protected compatibility identifiers reasonably
+accessible, for example in a legal page, about page, documentation page, source
+repository, admin documentation, or other normal notice location.
+
+Additional license terms, service terms, technical measures, or downstream
+restrictions must not remove, contradict, hide, disable, or override the KBeam
+compatibility and notice-preservation requirements.
+
+## Trademark Notice
+
+The KBeam name, logo, icons, visual identity, trade dress, marketing copy, and
+other brand assets are reserved by Philippos Zachiridis. Accurate compatibility
+references are allowed as described in the license and `TRADEMARKS.md`, but the
+license does not grant a general trademark, endorsement, certification,
+partnership, or product naming license.
 
 ## Licensor Data Source
 
@@ -92,4 +121,5 @@ To rollback this licensing change:
 2. Remove `LICENSE`.
 3. Remove `NOTICE`.
 4. Remove this document.
-5. Remove the README license section added with this change.
+5. Remove `TRADEMARKS.md`.
+6. Remove the README license section added with this change.
