@@ -132,6 +132,8 @@ def test_demo_page_is_served():
     assert response.status_code == 200
     assert "KBeam Auth Gateway Demo" in response.text
     assert "/api/auth/device-login" in response.text
+    assert "Login successful" in response.text
+    assert "setInterval" in response.text
 
 
 def test_qr_svg_has_white_background_and_scan_get_page():

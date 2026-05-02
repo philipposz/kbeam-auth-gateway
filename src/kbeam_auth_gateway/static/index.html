@@ -118,6 +118,25 @@
       .status {
         font-weight: 700;
       }
+      .notice {
+        margin-top: 16px;
+        border-radius: 8px;
+        border: 1px solid #c7ceda;
+        padding: 12px;
+        line-height: 1.45;
+      }
+      .notice strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+      .notice.success {
+        background: #ecfdf3;
+        border-color: #8bd7a6;
+        color: #15572b;
+      }
+      .notice[hidden] {
+        display: none;
+      }
       @media (max-width: 760px) {
         section {
           grid-template-columns: 1fr;
@@ -136,6 +155,11 @@
           background: #171d25;
           border-color: #313b4b;
           color: #eef2f8;
+        }
+        .notice.success {
+          background: #10391f;
+          border-color: #2d854c;
+          color: #d9fbe3;
         }
       }
     </style>
@@ -157,18 +181,24 @@
           <input id="approveUrl" readonly>
           <label for="ticketStatus">Ticket status</label>
           <input id="ticketStatus" class="status" readonly value="idle">
+          <div id="sessionNotice" class="notice success" hidden>
+            <strong>Login successful</strong>
+            <span id="sessionAddress"></span>
+          </div>
         </div>
         <pre id="log">{}</pre>
       </section>
     </main>
     <script>
-      const state = { ticket: null };
+      const state = { ticket: null, pollTimer: null };
       const createBtn = document.querySelector("#create");
       const pollBtn = document.querySelector("#poll");
       const logoutBtn = document.querySelector("#logout");
       const qr = document.querySelector("#qr");
       const approveUrl = document.querySelector("#approveUrl");
       const ticketStatus = document.querySelector("#ticketStatus");
+      const sessionNotice = document.querySelector("#sessionNotice");
+      const sessionAddress = document.querySelector("#sessionAddress");
       const log = document.querySelector("#log");
 
       function show(value) {
@@ -188,7 +218,58 @@
         return { status: response.status, ...body };
       }
 
+      function stopPolling() {
+        if (state.pollTimer) {
+          window.clearInterval(state.pollTimer);
+          state.pollTimer = null;
+        }
+      }
+
+      function showSession(session) {
+        sessionNotice.hidden = false;
+        sessionAddress.textContent = session?.address
+          ? `Wallet ${session.address} is signed in.`
+          : "Session is active.";
+      }
+
+      function clearSessionNotice() {
+        sessionNotice.hidden = true;
+        sessionAddress.textContent = "";
+      }
+
+      async function pollTicket() {
+        if (!state.ticket) return;
+        const query = new URLSearchParams({ pollToken: state.ticket.pollToken });
+        const result = await request(`/api/auth/device-login/${state.ticket.ticketId}?${query}`);
+        show(result);
+        if (result.ok) {
+          ticketStatus.value = result.deviceLogin.status;
+          if (result.session) {
+            showSession(result.session);
+            stopPolling();
+            pollBtn.disabled = true;
+          }
+        }
+      }
+
+      function startPolling() {
+        stopPolling();
+        state.pollTimer = window.setInterval(() => {
+          pollTicket().catch((error) => show({ ok: false, error: String(error) }));
+        }, 2000);
+      }
+
+      async function refreshSession() {
+        const result = await request("/api/auth/session");
+        if (result.ok && result.session) {
+          showSession(result.session);
+          show(result);
+        }
+      }
+
       createBtn.addEventListener("click", async () => {
+        stopPolling();
+        clearSessionNotice();
         const result = await request("/api/auth/device-login", { method: "POST" });
         show(result);
         if (result.ok) {
@@ -197,23 +278,23 @@
           approveUrl.value = state.ticket.approveURL;
           ticketStatus.value = state.ticket.status;
           pollBtn.disabled = false;
+          startPolling();
         }
       });
 
       pollBtn.addEventListener("click", async () => {
-        if (!state.ticket) return;
-        const query = new URLSearchParams({ pollToken: state.ticket.pollToken });
-        const result = await request(`/api/auth/device-login/${state.ticket.ticketId}?${query}`);
-        show(result);
-        if (result.ok) {
-          ticketStatus.value = result.deviceLogin.status;
-        }
+        pollTicket().catch((error) => show({ ok: false, error: String(error) }));
       });
 
       logoutBtn.addEventListener("click", async () => {
+        stopPolling();
         const result = await request("/api/auth/sessions/current", { method: "DELETE" });
+        clearSessionNotice();
+        ticketStatus.value = state.ticket ? state.ticket.status : "idle";
         show(result);
       });
+
+      refreshSession().catch(() => {});
     </script>
   </body>
 </html>
