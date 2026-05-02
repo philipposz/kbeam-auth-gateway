@@ -37,7 +37,7 @@ The protected compatibility identifiers are:
 
 - `KBeam login`
 - `kbeam-auth-v1`
-- `kbeam://pos-login`
+- `kbeam://`
 - KBeam auth identifiers beginning with `KBEAM` or `kbeam` when they are used to
   preserve KBeam auth compatibility
 
@@ -49,7 +49,7 @@ The minimum compatibility requirements are:
 
 - challenge opening line: `KBeam login`
 - protocol identifier: `kbeam-auth-v1`
-- app approval URI compatible with `kbeam://pos-login`
+- app approval URI compatible with `kbeam://`
 - challenge creation for a pending ticket
 - approval using a KBeam wallet signature
 - polling, SSE, or equivalent waiting-browser status mechanism

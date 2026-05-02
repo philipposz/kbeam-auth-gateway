@@ -95,7 +95,8 @@ address. `demo` mode is available only for local flow tests.
 - maximum pending-ticket cap
 - SSE ticket events with polling fallback in the demo
 - automatic QR expiry handling in the demo
-- KBeam-compatible `kbeam://pos-login` QR links with `webApproveURL` fallback
+- KBeam-compatible `kbeam://` QR links, currently `kbeam://pos-login`, with
+  `webApproveURL` fallback
 - same-device demo login button with `returnTo`
 
 Admin examples:

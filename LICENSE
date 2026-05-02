@@ -29,7 +29,8 @@ KBeam-Compatible Login, including:
 
 - the challenge opening line "KBeam login"
 - the protocol identifier "kbeam-auth-v1"
-- the KBeam app login URI scheme and route "kbeam://pos-login"
+- the KBeam app URI scheme "kbeam://", including login routes under that
+  scheme
 - the KBeam auth configuration and integration identifiers that begin with
   "KBEAM" or "kbeam" and are used to preserve KBeam auth compatibility
 
@@ -40,7 +41,7 @@ following:
 
 - a login challenge whose first line is "KBeam login"
 - the protocol identifier "kbeam-auth-v1"
-- an app approval URI compatible with "kbeam://pos-login"
+- an app approval URI compatible with the "kbeam://" scheme
 - a challenge creation path that allows the KBeam wallet application to obtain
   the login challenge for a pending ticket
 - an approval path that accepts a KBeam wallet signature for that challenge

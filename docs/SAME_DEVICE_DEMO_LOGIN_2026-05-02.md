@@ -4,7 +4,7 @@
 
 The demo page supports same-device login for mobile browsers. The first login
 ticket is created automatically when the page opens. The `Unlock with KBeam`
-button opens the ticket's
+button opens the ticket's KBeam app URL. The current implementation uses a
 `kbeam://pos-login` URL and appends:
 
 ```text
