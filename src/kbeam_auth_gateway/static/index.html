@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>KBeam Auth Gateway Demo</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f7f8fa;
+        color: #20242c;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+      }
+      main {
+        width: min(980px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 32px 0;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 28px;
+      }
+      h1 {
+        font-size: 28px;
+        line-height: 1.1;
+        margin: 0;
+        letter-spacing: 0;
+      }
+      section {
+        display: grid;
+        grid-template-columns: minmax(260px, 360px) 1fr;
+        gap: 24px;
+        align-items: start;
+      }
+      .panel {
+        background: #ffffff;
+        border: 1px solid #d9dee7;
+        border-radius: 8px;
+        padding: 18px;
+      }
+      .controls {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      button, a.button {
+        appearance: none;
+        border: 1px solid #2f6fed;
+        background: #2f6fed;
+        color: #ffffff;
+        border-radius: 6px;
+        padding: 10px 14px;
+        font: inherit;
+        font-weight: 650;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      button.secondary, a.button.secondary {
+        background: #ffffff;
+        color: #2f6fed;
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
+      label {
+        display: block;
+        font-size: 13px;
+        font-weight: 650;
+        margin: 16px 0 6px;
+      }
+      input {
+        width: 100%;
+        min-height: 40px;
+        border: 1px solid #c7ceda;
+        border-radius: 6px;
+        padding: 8px 10px;
+        font: inherit;
+      }
+      pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        min-height: 260px;
+        margin: 0;
+        background: #171b22;
+        color: #e9edf5;
+        border-radius: 8px;
+        padding: 16px;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      #qr {
+        min-height: 260px;
+        display: grid;
+        place-items: center;
+        border: 1px dashed #b5becd;
+        border-radius: 8px;
+        background: #ffffff;
+      }
+      #qr svg {
+        width: min(100%, 240px);
+        height: auto;
+      }
+      .status {
+        font-weight: 700;
+      }
+      @media (max-width: 760px) {
+        section {
+          grid-template-columns: 1fr;
+        }
+        header {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          background: #11151b;
+          color: #eef2f8;
+        }
+        .panel, input, #qr, button.secondary, a.button.secondary {
+          background: #171d25;
+          border-color: #313b4b;
+          color: #eef2f8;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>KBeam Auth Gateway Demo</h1>
+        <div class="controls">
+          <button id="create">New login</button>
+          <button id="poll" class="secondary" disabled>Poll</button>
+          <button id="logout" class="secondary">Logout</button>
+        </div>
+      </header>
+      <section>
+        <div class="panel">
+          <div id="qr">No login ticket yet.</div>
+          <label for="approveUrl">Approve URL</label>
+          <input id="approveUrl" readonly>
+          <label for="ticketStatus">Ticket status</label>
+          <input id="ticketStatus" class="status" readonly value="idle">
+        </div>
+        <pre id="log">{}</pre>
+      </section>
+    </main>
+    <script>
+      const state = { ticket: null };
+      const createBtn = document.querySelector("#create");
+      const pollBtn = document.querySelector("#poll");
+      const logoutBtn = document.querySelector("#logout");
+      const qr = document.querySelector("#qr");
+      const approveUrl = document.querySelector("#approveUrl");
+      const ticketStatus = document.querySelector("#ticketStatus");
+      const log = document.querySelector("#log");
+
+      function show(value) {
+        log.textContent = JSON.stringify(value, null, 2);
+      }
+
+      async function request(path, options = {}) {
+        const response = await fetch(path, {
+          credentials: "include",
+          headers: { "Accept": "application/json", ...(options.headers || {}) },
+          ...options,
+        });
+        if (response.status === 204) {
+          return { ok: true, status: 204 };
+        }
+        const body = await response.json();
+        return { status: response.status, ...body };
+      }
+
+      createBtn.addEventListener("click", async () => {
+        const result = await request("/api/auth/device-login", { method: "POST" });
+        show(result);
+        if (result.ok) {
+          state.ticket = result.deviceLogin;
+          qr.innerHTML = state.ticket.qrSvg;
+          approveUrl.value = state.ticket.approveURL;
+          ticketStatus.value = state.ticket.status;
+          pollBtn.disabled = false;
+        }
+      });
+
+      pollBtn.addEventListener("click", async () => {
+        if (!state.ticket) return;
+        const query = new URLSearchParams({ pollToken: state.ticket.pollToken });
+        const result = await request(`/api/auth/device-login/${state.ticket.ticketId}?${query}`);
+        show(result);
+        if (result.ok) {
+          ticketStatus.value = result.deviceLogin.status;
+        }
+      });
+
+      logoutBtn.addEventListener("click", async () => {
+        const result = await request("/api/auth/sessions/current", { method: "DELETE" });
+        show(result);
+      });
+    </script>
+  </body>
+</html>

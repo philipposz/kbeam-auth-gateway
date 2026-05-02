@@ -64,7 +64,7 @@ class Settings:
             ticket_ttl_seconds=_env_int("KBEAM_AUTH_TICKET_TTL_SECONDS", 300),
             secure_cookies=_env_bool("KBEAM_AUTH_SECURE_COOKIES", True),
             signer_network=_env("KBEAM_AUTH_SIGNER_NETWORK", "mainnet"),
-            signature_verifier_mode=_env("KBEAM_AUTH_SIGNATURE_VERIFIER_MODE", "demo"),
+            signature_verifier_mode=_env("KBEAM_AUTH_SIGNATURE_VERIFIER_MODE", "native"),
         )
 
     def validate(self) -> list[str]:
@@ -83,7 +83,6 @@ class Settings:
             errors.append("KBEAM_AUTH_CHALLENGE_TTL_SECONDS must be at least 60")
         if self.ticket_ttl_seconds < 60:
             errors.append("KBEAM_AUTH_TICKET_TTL_SECONDS must be at least 60")
-        if self.signature_verifier_mode not in {"demo", "disabled"}:
-            errors.append("KBEAM_AUTH_SIGNATURE_VERIFIER_MODE must be demo or disabled")
+        if self.signature_verifier_mode not in {"native", "demo", "disabled"}:
+            errors.append("KBEAM_AUTH_SIGNATURE_VERIFIER_MODE must be native, demo, or disabled")
         return errors
-

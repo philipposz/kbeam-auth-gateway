@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "LicenseRef-Proprietary-Until-Public-Release" }
 dependencies = [
+  "coincurve>=21,<22",
   "fastapi>=0.115,<1",
   "pydantic>=2,<3",
   "qrcode>=8,<9",
@@ -29,10 +30,12 @@ kbeam-auth-gateway = "kbeam_auth_gateway.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/kbeam_auth_gateway"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"src/kbeam_auth_gateway/static" = "kbeam_auth_gateway/static"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-

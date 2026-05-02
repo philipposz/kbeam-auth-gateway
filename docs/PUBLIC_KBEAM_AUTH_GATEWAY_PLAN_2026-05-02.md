@@ -167,7 +167,7 @@ Planned files:
 - `compose.yaml`
 - `deploy/nginx/example-app.conf`
 - `deploy/systemd/kbeam-auth-gateway.service.example`
-- `examples/static-demo/`
+- `src/kbeam_auth_gateway/static/`
 - `docs/protocol-v1.md`
 - `docs/nginx-auth-request.md`
 - `docs/rollback.md`
@@ -184,6 +184,7 @@ KBEAM_AUTH_SESSION_TTL_SECONDS=28800
 KBEAM_AUTH_CHALLENGE_TTL_SECONDS=300
 KBEAM_AUTH_SECURE_COOKIES=true
 KBEAM_AUTH_SIGNER_NETWORK=mainnet
+KBEAM_AUTH_SIGNATURE_VERIFIER_MODE=native
 ```
 
 ## Integration Modes
@@ -270,4 +271,3 @@ Only move toward public release when tests, docs, and secret hygiene are clean.
 - User model: wallet allowlist first, later organizations and roles.
 - Cookie strategy: per-app domain or central auth host.
 - External wallet compatibility: keep protocol open, KBeam app first.
-

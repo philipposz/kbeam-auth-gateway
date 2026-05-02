@@ -1,0 +1,23 @@
+[Unit]
+Description=KBeam Auth Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kbeam-auth
+Group=kbeam-auth
+WorkingDirectory=/opt/kbeam-auth-gateway
+EnvironmentFile=/etc/kbeam-auth-gateway.env
+ExecStart=/opt/kbeam-auth-gateway/.venv/bin/kbeam-auth-gateway
+Restart=on-failure
+RestartSec=3
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/kbeam-auth-gateway/var
+
+[Install]
+WantedBy=multi-user.target

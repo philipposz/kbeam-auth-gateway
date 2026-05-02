@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from http import HTTPStatus
+from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from .config import Settings
 from .models import (
@@ -21,7 +22,9 @@ from .protocol import build_challenge_message
 from .qr import qr_svg_for_url
 from .store import InMemoryStore, new_id, new_token
 from .time import isoformat_utc, utc_after, utc_now
-from .verifier import verify_signature
+from .verifier import SignatureVerificationError, verify_signature
+
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 def _public_ticket(ticket) -> dict:
@@ -99,6 +102,11 @@ def create_app(settings: Settings | None = None, store: InMemoryStore | None = N
                 "errors": errors,
             },
         }
+
+    @app.get("/", response_class=HTMLResponse)
+    @app.get("/demo", response_class=HTMLResponse)
+    def demo_page():
+        return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
     @app.post(
         "/api/auth/device-login",
@@ -243,22 +251,22 @@ def create_app(settings: Settings | None = None, store: InMemoryStore | None = N
             if settings.allowed_wallets and challenge.address.lower() not in settings.allowed_wallets:
                 raise _error(HTTPStatus.FORBIDDEN, "auth_wallet_not_allowed")
             try:
-                public_key = verify_signature(
+                signature_verification = verify_signature(
                     settings=settings,
                     challenge=challenge,
                     address=request.address,
                     signature=request.signature,
                     public_key=request.publicKey,
                 )
-            except ValueError as exc:
-                raise _error(HTTPStatus.BAD_REQUEST, str(exc)) from exc
+            except SignatureVerificationError as exc:
+                raise _error(exc.status_code, exc.code) from exc
 
             issued_at = utc_now()
             session = SessionRecord(
                 sessionId=new_id("session"),
                 address=challenge.address,
                 network=challenge.network,
-                publicKey=public_key,
+                publicKey=signature_verification.public_key,
                 issuedAt=issued_at,
                 expiresAt=utc_after(settings.session_ttl_seconds),
                 challengeId=challenge.challengeId,
@@ -274,6 +282,7 @@ def create_app(settings: Settings | None = None, store: InMemoryStore | None = N
             "deviceLogin": _public_ticket(ticket),
             "session": _session_view(session),
             "challenge": _challenge_view(challenge),
+            "signature": signature_verification.as_public_dict(),
         }
 
     def current_session_id(request: Request) -> str | None:

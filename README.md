@@ -25,14 +25,18 @@ secrets, private hostnames, and internal infrastructure notes are out of scope.
 ## Documentation
 
 - [Public gateway plan](docs/PUBLIC_KBEAM_AUTH_GATEWAY_PLAN_2026-05-02.md)
+- [Protocol v1](docs/protocol-v1.md)
+- [Native signature verifier](docs/native-signature-verifier.md)
+- [Nginx auth request integration](docs/nginx-auth-request.md)
+- [Deployment examples](docs/deployment-examples.md)
 - [Security and secret hygiene](docs/SECURITY_AND_SECRET_HYGIENE.md)
 - [Rollback notes](docs/ROLLBACK.md)
 
 ## Current Status
 
-This repository currently contains the extracted planning foundation. Runtime
-code, tests, protocol docs, and deployment examples will be added in small,
-reviewable steps.
+This repository contains the extracted planning foundation, a FastAPI runtime
+skeleton, native Schnorr signature verification, a local demo UI, tests, and
+generic deployment examples.
 
 ## Local Development
 
@@ -52,5 +56,17 @@ cp .env.example .env
 
 The first runtime skeleton exposes `/health`, `/api/auth/device-login`,
 `/api/auth/session`, `/api/auth/validate`, and logout/session endpoints. The
-signature verifier currently has a `demo` mode for protocol and flow testing
-only.
+demo UI is available at `http://127.0.0.1:18090/demo`.
+
+The default signature verifier mode is `native`. It verifies a 64-byte Schnorr
+signature over the raw UTF-8 challenge message with a 32-byte x-only secp256k1
+public key and checks that the derived Kaspa address matches the challenge
+address. `demo` mode is available only for local flow tests.
+
+## Docker
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+curl -f http://127.0.0.1:18090/health
+```

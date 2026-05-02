@@ -39,4 +39,6 @@ Before changing repository visibility to public:
 - verify examples use placeholder hosts only
 - verify no generated artifacts are tracked
 - verify protocol docs and security docs are complete enough for review
-
+- verify CI passes
+- verify native signature fixtures are synthetic and cannot authenticate against
+  real services

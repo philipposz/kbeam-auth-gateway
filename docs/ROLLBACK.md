@@ -37,3 +37,14 @@ Every deployment example should make these controls explicit:
 - which cookies may need clearing
 - which healthcheck confirms the rollback state
 
+## Native Verifier Rollback
+
+If native signature verification behaves unexpectedly during integration:
+
+1. Stop routing new protected applications through the gateway.
+2. Restore the previous application-specific authentication route.
+3. Keep `KBEAM_AUTH_SIGNATURE_VERIFIER_MODE=native` disabled in the affected
+   environment until the failing signature fixture is reproduced locally.
+4. Preserve the challenge message, public key, address, network, and signature
+   as a redacted test fixture only if they are synthetic or explicitly safe to
+   store.

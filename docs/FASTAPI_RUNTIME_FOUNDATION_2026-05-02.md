@@ -24,8 +24,8 @@ Implemented foundation:
 - `DELETE /api/auth/sessions/current`
 
 The first store is in-memory and intended only for local demo and protocol
-tests. Signature verification currently has a `demo` mode so the flow can be
-tested without embedding production wallet or verifier details.
+tests. Signature verification now supports native Schnorr verification. `demo`
+mode remains available only for local flow tests.
 
 ## Rollback
 
@@ -34,6 +34,10 @@ commit, remove:
 
 - `pyproject.toml`
 - `.env.example`
+- `Dockerfile`
+- `compose.yaml`
+- `.github/workflows/ci.yml`
+- `deploy/`
 - `src/`
 - `tests/`
 - this document
@@ -42,6 +46,4 @@ No deployment state is affected.
 
 ## Next Step
 
-Replace demo signature verification with the public verifier contract and add
-byte-stability tests for `kbeam-auth-v1` challenge messages.
-
+Add persistent stores and rate limits before any production deployment.

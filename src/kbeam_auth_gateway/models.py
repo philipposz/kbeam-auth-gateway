@@ -41,6 +41,7 @@ class ApproveResponse(BaseModel):
     deviceLogin: dict
     session: dict
     challenge: dict
+    signature: dict
 
 
 class SessionResponse(BaseModel):
@@ -86,4 +87,3 @@ class SessionRecord(BaseModel):
     issuedAt: datetime
     expiresAt: datetime
     challengeId: str
-
