@@ -26,14 +26,16 @@ Current mitigations:
 - configurable Secure cookie flag
 - SameSite=Lax cookies
 - native Schnorr verification over exact raw message bytes
-- wallet allowlist
+- SQLite-backed wallet allowlist
+- admin API protected by a bearer token
+- per-IP rate limits
+- maximum pending-ticket cap
+- audit log without secrets
 - placeholder-only example configuration
 
 Planned hardening:
 
-- persistent session store option
-- rate limits
-- structured audit log without secrets
+- Postgres or Redis-backed shared stores for multi-process deployments
 - broader CSRF review before public release
 - automated secret scanning in the release process
 

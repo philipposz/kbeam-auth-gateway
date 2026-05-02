@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from dotenv import load_dotenv
+
 
 def _env(name: str, default: str) -> str:
     value = os.getenv(name)
@@ -48,9 +50,22 @@ class Settings:
     secure_cookies: bool
     signer_network: str
     signature_verifier_mode: str
+    wallet_policy: str = "allowlist"
+    store_backend: str = "sqlite"
+    sqlite_path: str = "./var/kbeam-auth-gateway.sqlite3"
+    admin_token: str = ""
+    max_pending_tickets: int = 1000
+    rate_limit_window_seconds: int = 60
+    rate_limit_device_login: int = 20
+    rate_limit_ticket_poll: int = 120
+    rate_limit_ticket_events: int = 30
+    rate_limit_challenge: int = 60
+    rate_limit_approve: int = 60
+    rate_limit_admin: int = 120
 
     @classmethod
     def from_env(cls) -> "Settings":
+        load_dotenv()
         return cls(
             bind=_env("KBEAM_AUTH_BIND", "127.0.0.1:18090"),
             public_base_url=_env("KBEAM_AUTH_PUBLIC_BASE_URL", "https://auth.example.com").rstrip("/"),
@@ -65,6 +80,18 @@ class Settings:
             secure_cookies=_env_bool("KBEAM_AUTH_SECURE_COOKIES", True),
             signer_network=_env("KBEAM_AUTH_SIGNER_NETWORK", "mainnet"),
             signature_verifier_mode=_env("KBEAM_AUTH_SIGNATURE_VERIFIER_MODE", "native"),
+            wallet_policy=_env("KBEAM_AUTH_WALLET_POLICY", "allowlist").lower(),
+            store_backend=_env("KBEAM_AUTH_STORE_BACKEND", "sqlite").lower(),
+            sqlite_path=_env("KBEAM_AUTH_SQLITE_PATH", "./var/kbeam-auth-gateway.sqlite3"),
+            admin_token=_env("KBEAM_AUTH_ADMIN_TOKEN", ""),
+            max_pending_tickets=_env_int("KBEAM_AUTH_MAX_PENDING_TICKETS", 1000),
+            rate_limit_window_seconds=_env_int("KBEAM_AUTH_RATE_LIMIT_WINDOW_SECONDS", 60),
+            rate_limit_device_login=_env_int("KBEAM_AUTH_RATE_LIMIT_DEVICE_LOGIN", 20),
+            rate_limit_ticket_poll=_env_int("KBEAM_AUTH_RATE_LIMIT_TICKET_POLL", 120),
+            rate_limit_ticket_events=_env_int("KBEAM_AUTH_RATE_LIMIT_TICKET_EVENTS", 30),
+            rate_limit_challenge=_env_int("KBEAM_AUTH_RATE_LIMIT_CHALLENGE", 60),
+            rate_limit_approve=_env_int("KBEAM_AUTH_RATE_LIMIT_APPROVE", 60),
+            rate_limit_admin=_env_int("KBEAM_AUTH_RATE_LIMIT_ADMIN", 120),
         )
 
     def validate(self) -> list[str]:
@@ -85,4 +112,14 @@ class Settings:
             errors.append("KBEAM_AUTH_TICKET_TTL_SECONDS must be at least 60")
         if self.signature_verifier_mode not in {"native", "demo", "disabled"}:
             errors.append("KBEAM_AUTH_SIGNATURE_VERIFIER_MODE must be native, demo, or disabled")
+        if self.wallet_policy not in {"open", "allowlist"}:
+            errors.append("KBEAM_AUTH_WALLET_POLICY must be open or allowlist")
+        if self.store_backend not in {"memory", "sqlite"}:
+            errors.append("KBEAM_AUTH_STORE_BACKEND must be memory or sqlite")
+        if self.store_backend == "sqlite" and not self.sqlite_path:
+            errors.append("KBEAM_AUTH_SQLITE_PATH is required when KBEAM_AUTH_STORE_BACKEND=sqlite")
+        if self.max_pending_tickets < 1:
+            errors.append("KBEAM_AUTH_MAX_PENDING_TICKETS must be at least 1")
+        if self.rate_limit_window_seconds < 1:
+            errors.append("KBEAM_AUTH_RATE_LIMIT_WINDOW_SECONDS must be at least 1")
         return errors

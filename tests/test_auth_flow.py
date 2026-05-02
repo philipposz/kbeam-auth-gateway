@@ -1,20 +1,29 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from coincurve import PrivateKey, keys
 from fastapi.testclient import TestClient
 
 from kbeam_auth_gateway.app import create_app
 from kbeam_auth_gateway.config import Settings
+from kbeam_auth_gateway.models import SessionRecord
 from kbeam_auth_gateway.protocol import build_challenge_message
-from kbeam_auth_gateway.store import InMemoryStore
-from kbeam_auth_gateway.time import utc_now
+from kbeam_auth_gateway.store import InMemoryStore, SQLiteStore, new_id
+from kbeam_auth_gateway.time import utc_after, utc_now
 from kbeam_auth_gateway.verifier import (
     expected_demo_signature,
     kaspa_address_from_xonly_public_key,
 )
 
 
-def _settings(*, allowed_wallets: tuple[str, ...], verifier_mode: str = "native") -> Settings:
+def _settings(
+    *,
+    allowed_wallets: tuple[str, ...],
+    verifier_mode: str = "native",
+    wallet_policy: str = "allowlist",
+    admin_token: str = "",
+) -> Settings:
     return Settings(
         bind="127.0.0.1:18090",
         public_base_url="https://auth.example.com",
@@ -29,6 +38,9 @@ def _settings(*, allowed_wallets: tuple[str, ...], verifier_mode: str = "native"
         secure_cookies=False,
         signer_network="mainnet",
         signature_verifier_mode=verifier_mode,
+        wallet_policy=wallet_policy,
+        store_backend="memory",
+        admin_token=admin_token,
     )
 
 
@@ -85,7 +97,7 @@ def test_device_login_flow_sets_and_validates_session_cookie():
     challenge_response = client.post(
         f"/api/auth/device-login/{ticket['ticketId']}/challenge",
         json={
-            "approveToken": store.tickets[ticket["ticketId"]].approveToken,
+            "approveToken": store.get_ticket(ticket["ticketId"]).approveToken,
             "address": address,
             "origin": "https://protected.example.com",
         },
@@ -133,7 +145,8 @@ def test_demo_page_is_served():
     assert "KBeam Auth Gateway Demo" in response.text
     assert "/api/auth/device-login" in response.text
     assert "Login successful" in response.text
-    assert "setInterval" in response.text
+    assert "EventSource" in response.text
+    assert "QR expired" in response.text
 
 
 def test_qr_svg_has_white_background_and_scan_get_page():
@@ -162,7 +175,7 @@ def test_rejects_wallet_outside_allowlist():
     challenge = client.post(
         f"/api/auth/device-login/{ticket['ticketId']}/challenge",
         json={
-            "approveToken": store.tickets[ticket["ticketId"]].approveToken,
+            "approveToken": store.get_ticket(ticket["ticketId"]).approveToken,
             "address": address,
         },
     ).json()["challenge"]
@@ -192,7 +205,7 @@ def test_ticket_can_only_be_approved_once():
     challenge = client.post(
         f"/api/auth/device-login/{ticket['ticketId']}/challenge",
         json={
-            "approveToken": store.tickets[ticket["ticketId"]].approveToken,
+            "approveToken": store.get_ticket(ticket["ticketId"]).approveToken,
             "address": address,
         },
     ).json()["challenge"]
@@ -222,7 +235,7 @@ def test_demo_signature_mode_remains_available_for_local_flow_tests():
     challenge = client.post(
         f"/api/auth/device-login/{ticket['ticketId']}/challenge",
         json={
-            "approveToken": store.tickets[ticket["ticketId"]].approveToken,
+            "approveToken": store.get_ticket(ticket["ticketId"]).approveToken,
             "address": "kaspa:example",
         },
     ).json()["challenge"]
@@ -231,7 +244,7 @@ def test_demo_signature_mode_remains_available_for_local_flow_tests():
         json={
             "challengeId": challenge["challengeId"],
             "address": "kaspa:example",
-            "signature": expected_demo_signature(store.challenges[challenge["challengeId"]]),
+            "signature": expected_demo_signature(store.get_challenge(challenge["challengeId"])),
         },
     )
 
@@ -250,7 +263,7 @@ def test_native_verifier_rejects_tampered_message_signature():
     challenge = client.post(
         f"/api/auth/device-login/{ticket['ticketId']}/challenge",
         json={
-            "approveToken": store.tickets[ticket["ticketId"]].approveToken,
+            "approveToken": store.get_ticket(ticket["ticketId"]).approveToken,
             "address": address,
         },
     ).json()["challenge"]
@@ -298,3 +311,105 @@ def test_challenge_message_is_byte_stable():
             "Origin: https://protected.example.com",
         ]
     )
+
+
+def test_sse_ticket_events_emit_initial_status():
+    settings = _settings(allowed_wallets=(), verifier_mode="demo", wallet_policy="open")
+    store = InMemoryStore()
+    client = TestClient(create_app(settings=settings, store=store))
+    ticket = client.post("/api/auth/device-login").json()["deviceLogin"]
+    ticket_record = store.get_ticket(ticket["ticketId"])
+    session = SessionRecord(
+        sessionId=new_id("session"),
+        address="kaspa:example",
+        network="mainnet",
+        publicKey="demo-public-key",
+        issuedAt=utc_now(),
+        expiresAt=utc_after(300),
+        challengeId="challenge_demo",
+    )
+    store.create_session(session)
+    ticket_record.status = "approved"
+    ticket_record.sessionId = session.sessionId
+    store.save_ticket(ticket_record)
+
+    with client.stream(
+        "GET",
+        f"/api/auth/device-login/{ticket['ticketId']}/events",
+        params={"pollToken": ticket["pollToken"]},
+    ) as response:
+        assert response.status_code == 200
+        first_chunk = next(response.iter_text())
+
+    assert "event: status" in first_chunk
+    assert ticket["ticketId"] in first_chunk
+
+
+def test_rate_limit_blocks_excess_device_login_requests():
+    settings = replace(
+        _settings(allowed_wallets=(), verifier_mode="demo", wallet_policy="open"),
+        rate_limit_device_login=1,
+    )
+    client = TestClient(create_app(settings=settings, store=InMemoryStore()))
+
+    assert client.post("/api/auth/device-login").status_code == 201
+    blocked = client.post("/api/auth/device-login")
+
+    assert blocked.status_code == 429
+    assert blocked.json()["error"] == "rate_limit_exceeded"
+
+
+def test_sqlite_wallet_admin_and_audit_log(tmp_path):
+    private_key = _private_key()
+    address = _address(private_key)
+    settings = _settings(allowed_wallets=(), admin_token="secret-admin-token")
+    store = SQLiteStore(str(tmp_path / "auth.sqlite3"))
+    client = TestClient(create_app(settings=settings, store=store))
+
+    assert client.get("/api/admin/wallets").status_code == 401
+
+    headers = {"Authorization": "Bearer secret-admin-token"}
+    created = client.post(
+        "/api/admin/wallets",
+        headers=headers,
+        json={"address": address, "label": "Test Wallet", "role": "admin", "enabled": True},
+    )
+    assert created.status_code == 201
+    assert created.json()["wallet"]["address"] == address
+
+    listed = client.get("/api/admin/wallets", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()["wallets"][0]["label"] == "Test Wallet"
+
+    ticket = client.post("/api/auth/device-login").json()["deviceLogin"]
+    challenge = client.post(
+        f"/api/auth/device-login/{ticket['ticketId']}/challenge",
+        json={
+            "approveToken": store.get_ticket(ticket["ticketId"]).approveToken,
+            "address": address,
+        },
+    ).json()["challenge"]
+    approved = client.post(
+        f"/api/auth/device-login/{ticket['ticketId']}/approve",
+        json={
+            "challengeId": challenge["challengeId"],
+            "address": address,
+            "signature": _sign_raw_schnorr(private_key, challenge["message"]),
+            "publicKey": _xonly_public_key_hex(private_key),
+        },
+    )
+    assert approved.status_code == 200
+
+    patched = client.patch(
+        f"/api/admin/wallets/{address}",
+        headers=headers,
+        json={"enabled": False},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["wallet"]["enabled"] is False
+
+    audit = client.get("/api/admin/audit-log", headers=headers)
+    assert audit.status_code == 200
+    events = [item["event"] for item in audit.json()["auditLog"]]
+    assert "admin_wallet_upsert" in events
+    assert "device_login_approve" in events

@@ -1,8 +1,10 @@
 # Demo Login Success 2026-05-02
 
-The demo page now polls the device-login ticket automatically after a QR code is
-created. When the KBeam app approves the ticket, the browser receives the
-session cookie during polling and shows a visible `Login successful` status.
+The demo page now subscribes to device-login ticket events with Server-Sent
+Events after a QR code is created. When SSE is unavailable, it falls back to
+polling with backoff. When the KBeam app approves the ticket, the browser makes
+one poll request to receive the session cookie and shows a visible
+`Login successful` status.
 
 This does not require a separate demo app. The browser demo is the relying app
 for this test flow, and the KBeam app remains the wallet signer.

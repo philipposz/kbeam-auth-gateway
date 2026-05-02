@@ -54,6 +54,19 @@ class ErrorResponse(BaseModel):
     error: str
 
 
+class WalletCreateRequest(BaseModel):
+    address: str = Field(min_length=1)
+    label: str = ""
+    role: str = "user"
+    enabled: bool = True
+
+
+class WalletUpdateRequest(BaseModel):
+    label: str | None = None
+    role: str | None = None
+    enabled: bool | None = None
+
+
 class TicketRecord(BaseModel):
     ticketId: str
     pollToken: str
@@ -87,3 +100,21 @@ class SessionRecord(BaseModel):
     issuedAt: datetime
     expiresAt: datetime
     challengeId: str
+
+
+class WalletRecord(BaseModel):
+    address: str
+    label: str
+    role: str
+    enabled: bool
+    createdAt: datetime
+    updatedAt: datetime
+
+
+class AuditRecord(BaseModel):
+    id: int | None = None
+    event: str
+    address: str | None = None
+    result: str
+    details: dict
+    createdAt: datetime

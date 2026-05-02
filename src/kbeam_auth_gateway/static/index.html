@@ -190,7 +190,7 @@
       </section>
     </main>
     <script>
-      const state = { ticket: null, pollTimer: null };
+      const state = { ticket: null, pollTimer: null, expiryTimer: null, eventSource: null, pollDelayMs: 2000 };
       const createBtn = document.querySelector("#create");
       const pollBtn = document.querySelector("#poll");
       const logoutBtn = document.querySelector("#logout");
@@ -220,8 +220,16 @@
 
       function stopPolling() {
         if (state.pollTimer) {
-          window.clearInterval(state.pollTimer);
+          window.clearTimeout(state.pollTimer);
           state.pollTimer = null;
+        }
+        if (state.eventSource) {
+          state.eventSource.close();
+          state.eventSource = null;
+        }
+        if (state.expiryTimer) {
+          window.clearTimeout(state.expiryTimer);
+          state.expiryTimer = null;
         }
       }
 
@@ -234,7 +242,28 @@
 
       function clearSessionNotice() {
         sessionNotice.hidden = true;
+        sessionNotice.classList.remove("success");
         sessionAddress.textContent = "";
+      }
+
+      function showExpired() {
+        stopPolling();
+        ticketStatus.value = "expired";
+        sessionNotice.hidden = false;
+        sessionNotice.classList.remove("success");
+        sessionAddress.textContent = "QR expired. Create a new login ticket.";
+        pollBtn.disabled = true;
+      }
+
+      function scheduleExpiry() {
+        if (!state.ticket?.expiresAt) return;
+        const expiresAtMs = Date.parse(state.ticket.expiresAt);
+        const delay = expiresAtMs - Date.now();
+        if (!Number.isFinite(delay) || delay <= 0) {
+          showExpired();
+          return;
+        }
+        state.expiryTimer = window.setTimeout(showExpired, delay + 250);
       }
 
       async function pollTicket() {
@@ -248,15 +277,57 @@
             showSession(result.session);
             stopPolling();
             pollBtn.disabled = true;
+          } else if (result.deviceLogin.status === "pending") {
+            state.pollDelayMs = Math.min(Math.round(state.pollDelayMs * 1.35), 8000);
           }
+        } else if (result.error === "device_login_ticket_not_found") {
+          showExpired();
         }
       }
 
-      function startPolling() {
-        stopPolling();
-        state.pollTimer = window.setInterval(() => {
-          pollTicket().catch((error) => show({ ok: false, error: String(error) }));
-        }, 2000);
+      function scheduleFallbackPoll() {
+        if (!state.ticket || state.pollTimer) return;
+        state.pollTimer = window.setTimeout(async () => {
+          state.pollTimer = null;
+          try {
+            await pollTicket();
+          } catch (error) {
+            show({ ok: false, error: String(error) });
+            state.pollDelayMs = Math.min(Math.round(state.pollDelayMs * 1.5), 10000);
+          }
+          if (state.ticket && !sessionNotice.classList.contains("success") && ticketStatus.value !== "expired") {
+            scheduleFallbackPoll();
+          }
+        }, state.pollDelayMs);
+      }
+
+      function startEvents() {
+        if (!state.ticket || !window.EventSource) {
+          scheduleFallbackPoll();
+          return;
+        }
+        const query = new URLSearchParams({ pollToken: state.ticket.pollToken });
+        state.eventSource = new EventSource(`/api/auth/device-login/${state.ticket.ticketId}/events?${query}`);
+        state.eventSource.addEventListener("status", (event) => {
+          const payload = JSON.parse(event.data);
+          show(payload);
+          ticketStatus.value = payload.deviceLogin.status;
+        });
+        state.eventSource.addEventListener("approved", async (event) => {
+          const payload = JSON.parse(event.data);
+          show(payload);
+          await pollTicket();
+        });
+        state.eventSource.addEventListener("expired", () => {
+          showExpired();
+        });
+        state.eventSource.onerror = () => {
+          if (state.eventSource) {
+            state.eventSource.close();
+            state.eventSource = null;
+          }
+          scheduleFallbackPoll();
+        };
       }
 
       async function refreshSession() {
@@ -278,7 +349,9 @@
           approveUrl.value = state.ticket.approveURL;
           ticketStatus.value = state.ticket.status;
           pollBtn.disabled = false;
-          startPolling();
+          state.pollDelayMs = 2000;
+          scheduleExpiry();
+          startEvents();
         }
       });
 

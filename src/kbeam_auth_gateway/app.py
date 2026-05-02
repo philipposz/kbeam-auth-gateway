@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import html
+import json
 from http import HTTPStatus
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlencode
 
-from fastapi import FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from .config import Settings
 from .models import (
@@ -16,12 +18,14 @@ from .models import (
     ChallengeCreateRequest,
     ChallengeCreateResponse,
     DeviceLoginCreateResponse,
+    WalletCreateRequest,
+    WalletUpdateRequest,
     SessionResponse,
     TicketPollResponse,
 )
 from .protocol import build_challenge_message
 from .qr import qr_svg_for_url
-from .store import InMemoryStore, new_id, new_token
+from .store import AuthStore, create_store, new_id, new_token
 from .time import isoformat_utc, utc_after, utc_now
 from .verifier import SignatureVerificationError, verify_signature
 
@@ -61,6 +65,28 @@ def _challenge_view(challenge) -> dict:
         "expiresAt": isoformat_utc(challenge.expiresAt),
         "origin": challenge.origin,
         "message": challenge.message,
+    }
+
+
+def _wallet_view(wallet) -> dict:
+    return {
+        "address": wallet.address,
+        "label": wallet.label,
+        "role": wallet.role,
+        "enabled": wallet.enabled,
+        "createdAt": isoformat_utc(wallet.createdAt),
+        "updatedAt": isoformat_utc(wallet.updatedAt),
+    }
+
+
+def _audit_view(record) -> dict:
+    return {
+        "id": record.id,
+        "event": record.event,
+        "address": record.address,
+        "result": record.result,
+        "details": record.details,
+        "createdAt": isoformat_utc(record.createdAt),
     }
 
 
@@ -153,9 +179,10 @@ def _render_scan_page(*, ticket_id: str, approve_token: str, status: str, expire
 </html>"""
 
 
-def create_app(settings: Settings | None = None, store: InMemoryStore | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, store: AuthStore | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
-    store = store or InMemoryStore()
+    store = store or create_store(settings)
+    store.bootstrap(settings)
 
     app = FastAPI(
         title="KBeam Auth Gateway",
@@ -165,6 +192,42 @@ def create_app(settings: Settings | None = None, store: InMemoryStore | None = N
     )
     app.state.settings = settings
     app.state.store = store
+
+    def client_key(request: Request, scope: str) -> str:
+        forwarded_for = request.headers.get("x-forwarded-for", "")
+        ip = forwarded_for.split(",", 1)[0].strip() if forwarded_for else ""
+        if not ip and request.client:
+            ip = request.client.host
+        return f"{scope}:{ip or 'unknown'}"
+
+    def require_rate(request: Request, scope: str, limit: int) -> None:
+        if not store.check_rate_limit(
+            client_key(request, scope),
+            limit=limit,
+            window_seconds=settings.rate_limit_window_seconds,
+        ):
+            store.add_audit(
+                "rate_limit_exceeded",
+                result="blocked",
+                details={"scope": scope, "path": request.url.path},
+            )
+            raise _error(HTTPStatus.TOO_MANY_REQUESTS, "rate_limit_exceeded")
+
+    def require_admin(
+        request: Request,
+        authorization: str | None,
+        admin_token_header: str | None,
+    ) -> None:
+        require_rate(request, "admin", settings.rate_limit_admin)
+        if not settings.admin_token:
+            raise _error(HTTPStatus.SERVICE_UNAVAILABLE, "admin_token_not_configured")
+        expected = settings.admin_token
+        bearer = ""
+        if authorization and authorization.lower().startswith("bearer "):
+            bearer = authorization[7:].strip()
+        if bearer != expected and (admin_token_header or "").strip() != expected:
+            store.add_audit("admin_auth", result="blocked", details={"path": request.url.path})
+            raise _error(HTTPStatus.UNAUTHORIZED, "admin_auth_required")
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(_request, exc: HTTPException):
@@ -199,10 +262,18 @@ def create_app(settings: Settings | None = None, store: InMemoryStore | None = N
         status_code=HTTPStatus.CREATED,
         response_model=DeviceLoginCreateResponse,
     )
-    def create_device_login():
+    def create_device_login(request: Request):
         from .models import TicketRecord
 
+        require_rate(request, "device_login", settings.rate_limit_device_login)
         store.purge_expired()
+        if store.pending_ticket_count() >= settings.max_pending_tickets:
+            store.add_audit(
+                "device_login_ticket_create",
+                result="blocked",
+                details={"reason": "max_pending_tickets"},
+            )
+            raise _error(HTTPStatus.TOO_MANY_REQUESTS, "max_pending_tickets_reached")
         issued_at = utc_now()
         expires_at = utc_after(settings.ticket_ttl_seconds)
         ticket_id = new_id("ticket")
@@ -222,8 +293,8 @@ def create_app(settings: Settings | None = None, store: InMemoryStore | None = N
             issuedAt=issued_at,
             expiresAt=expires_at,
         )
-        with store.lock:
-            store.tickets[ticket.ticketId] = ticket
+        store.create_ticket(ticket)
+        store.add_audit("device_login_ticket_create", details={"ticketId": ticket.ticketId})
         payload = _public_ticket(ticket)
         payload["pollToken"] = poll_token
         return {"ok": True, "deviceLogin": payload}
@@ -231,31 +302,69 @@ def create_app(settings: Settings | None = None, store: InMemoryStore | None = N
     @app.get("/api/auth/device-login/{ticket_id}", response_model=TicketPollResponse)
     def poll_device_login(
         ticket_id: str,
+        request: Request,
         response: Response,
         poll_token: Annotated[str, Query(alias="pollToken")],
     ):
+        require_rate(request, "ticket_poll", settings.rate_limit_ticket_poll)
         store.purge_expired()
-        with store.lock:
-            ticket = store.tickets.get(ticket_id)
-            if not ticket:
-                raise _error(HTTPStatus.NOT_FOUND, "device_login_ticket_not_found")
-            if ticket.pollToken != poll_token:
-                raise _error(HTTPStatus.FORBIDDEN, "device_login_poll_forbidden")
-            payload = {"ok": True, "deviceLogin": _public_ticket(ticket), "session": None}
-            if ticket.status == "approved" and ticket.sessionId:
-                session = store.sessions.get(ticket.sessionId)
-                if session:
-                    response.set_cookie(
-                        settings.cookie_name,
-                        session.sessionId,
-                        max_age=settings.session_ttl_seconds,
-                        httponly=True,
-                        secure=settings.secure_cookies,
-                        samesite="lax",
-                        domain=settings.cookie_domain or None,
-                    )
-                    payload["session"] = _session_view(session)
-            return payload
+        ticket = store.get_ticket(ticket_id)
+        if not ticket:
+            raise _error(HTTPStatus.NOT_FOUND, "device_login_ticket_not_found")
+        if ticket.pollToken != poll_token:
+            raise _error(HTTPStatus.FORBIDDEN, "device_login_poll_forbidden")
+        payload = {"ok": True, "deviceLogin": _public_ticket(ticket), "session": None}
+        if ticket.status == "approved" and ticket.sessionId:
+            session = store.get_session(ticket.sessionId)
+            if session:
+                response.set_cookie(
+                    settings.cookie_name,
+                    session.sessionId,
+                    max_age=settings.session_ttl_seconds,
+                    httponly=True,
+                    secure=settings.secure_cookies,
+                    samesite="lax",
+                    domain=settings.cookie_domain or None,
+                )
+                payload["session"] = _session_view(session)
+        return payload
+
+    @app.get("/api/auth/device-login/{ticket_id}/events")
+    async def device_login_events(
+        ticket_id: str,
+        request: Request,
+        poll_token: Annotated[str, Query(alias="pollToken")],
+    ):
+        require_rate(request, "ticket_events", settings.rate_limit_ticket_events)
+        ticket = store.get_ticket(ticket_id)
+        if not ticket:
+            raise _error(HTTPStatus.NOT_FOUND, "device_login_ticket_not_found")
+        if ticket.pollToken != poll_token:
+            raise _error(HTTPStatus.FORBIDDEN, "device_login_poll_forbidden")
+
+        async def event_stream():
+            last_status = ""
+            while True:
+                if await request.is_disconnected():
+                    break
+                current = store.get_ticket(ticket_id)
+                if not current:
+                    yield "event: expired\ndata: {\"ok\":false,\"error\":\"device_login_ticket_expired\"}\n\n"
+                    break
+                payload = {"ok": True, "deviceLogin": _public_ticket(current)}
+                if current.status != last_status:
+                    yield f"event: status\ndata: {json.dumps(payload)}\n\n"
+                    last_status = current.status
+                if current.status == "approved":
+                    yield f"event: approved\ndata: {json.dumps(payload)}\n\n"
+                    break
+                await asyncio.sleep(1)
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+        )
 
     @app.get("/api/auth/device-login/{ticket_id}/challenge", response_class=HTMLResponse)
     def challenge_scan_page(
@@ -263,67 +372,71 @@ def create_app(settings: Settings | None = None, store: InMemoryStore | None = N
         approve_token: Annotated[str, Query(alias="approveToken")],
     ):
         store.purge_expired()
-        with store.lock:
-            ticket = store.tickets.get(ticket_id)
-            if not ticket:
-                raise _error(HTTPStatus.NOT_FOUND, "device_login_ticket_not_found")
-            if ticket.approveToken != approve_token:
-                raise _error(HTTPStatus.FORBIDDEN, "device_login_approve_forbidden")
-            return _render_scan_page(
-                ticket_id=ticket.ticketId,
-                approve_token=approve_token,
-                status=ticket.status,
-                expires_at=isoformat_utc(ticket.expiresAt),
-            )
+        ticket = store.get_ticket(ticket_id)
+        if not ticket:
+            raise _error(HTTPStatus.NOT_FOUND, "device_login_ticket_not_found")
+        if ticket.approveToken != approve_token:
+            raise _error(HTTPStatus.FORBIDDEN, "device_login_approve_forbidden")
+        return _render_scan_page(
+            ticket_id=ticket.ticketId,
+            approve_token=approve_token,
+            status=ticket.status,
+            expires_at=isoformat_utc(ticket.expiresAt),
+        )
 
     @app.post(
         "/api/auth/device-login/{ticket_id}/challenge",
         status_code=HTTPStatus.CREATED,
         response_model=ChallengeCreateResponse,
     )
-    def create_challenge(ticket_id: str, request: ChallengeCreateRequest):
+    def create_challenge(ticket_id: str, request: Request, payload: ChallengeCreateRequest):
         from .models import ChallengeRecord
 
+        require_rate(request, "challenge", settings.rate_limit_challenge)
         store.purge_expired()
-        with store.lock:
-            ticket = store.tickets.get(ticket_id)
-            if not ticket:
-                raise _error(HTTPStatus.NOT_FOUND, "device_login_ticket_not_found")
-            if ticket.approveToken != request.approveToken:
-                raise _error(HTTPStatus.FORBIDDEN, "device_login_approve_forbidden")
-            if ticket.status != "pending":
-                raise _error(HTTPStatus.CONFLICT, "device_login_ticket_not_pending")
+        ticket = store.get_ticket(ticket_id)
+        if not ticket:
+            raise _error(HTTPStatus.NOT_FOUND, "device_login_ticket_not_found")
+        if ticket.approveToken != payload.approveToken:
+            raise _error(HTTPStatus.FORBIDDEN, "device_login_approve_forbidden")
+        if ticket.status != "pending":
+            raise _error(HTTPStatus.CONFLICT, "device_login_ticket_not_pending")
 
-            address = request.address.strip().lower()
-            issued_at = utc_now()
-            expires_at = utc_after(settings.challenge_ttl_seconds)
-            challenge_id = new_id("challenge")
-            nonce = new_token()
-            origin = request.origin or settings.public_base_url
-            challenge = ChallengeRecord(
-                challengeId=challenge_id,
-                ticketId=ticket.ticketId,
+        address = payload.address.strip().lower()
+        issued_at = utc_now()
+        expires_at = utc_after(settings.challenge_ttl_seconds)
+        challenge_id = new_id("challenge")
+        nonce = new_token()
+        origin = payload.origin or settings.public_base_url
+        challenge = ChallengeRecord(
+            challengeId=challenge_id,
+            ticketId=ticket.ticketId,
+            address=address,
+            network=payload.network or settings.signer_network,
+            nonce=nonce,
+            issuedAt=issued_at,
+            expiresAt=expires_at,
+            origin=origin,
+            message=build_challenge_message(
+                settings=settings,
                 address=address,
-                network=request.network or settings.signer_network,
                 nonce=nonce,
-                issuedAt=issued_at,
-                expiresAt=expires_at,
+                issued_at=issued_at,
+                expires_at=expires_at,
+                ticket_id=ticket.ticketId,
                 origin=origin,
-                message=build_challenge_message(
-                    settings=settings,
-                    address=address,
-                    nonce=nonce,
-                    issued_at=issued_at,
-                    expires_at=expires_at,
-                    ticket_id=ticket.ticketId,
-                    origin=origin,
-                ),
-            )
-            if ticket.challengeId:
-                store.challenges.pop(ticket.challengeId, None)
-            store.challenges[challenge.challengeId] = challenge
-            ticket.challengeId = challenge.challengeId
-            store.tickets[ticket.ticketId] = ticket
+            ),
+        )
+        if ticket.challengeId:
+            store.delete_challenge(ticket.challengeId)
+        store.create_challenge(challenge)
+        ticket.challengeId = challenge.challengeId
+        store.save_ticket(ticket)
+        store.add_audit(
+            "device_login_challenge_create",
+            address=address,
+            details={"ticketId": ticket.ticketId, "challengeId": challenge.challengeId},
+        )
 
         return {
             "ok": True,
@@ -335,52 +448,69 @@ def create_app(settings: Settings | None = None, store: InMemoryStore | None = N
         "/api/auth/device-login/{ticket_id}/approve",
         response_model=ApproveResponse,
     )
-    def approve_device_login(ticket_id: str, request: ApproveRequest):
+    def approve_device_login(ticket_id: str, request: Request, payload: ApproveRequest):
         from .models import SessionRecord
 
+        require_rate(request, "approve", settings.rate_limit_approve)
         store.purge_expired()
-        with store.lock:
-            ticket = store.tickets.get(ticket_id)
-            if not ticket:
-                raise _error(HTTPStatus.NOT_FOUND, "device_login_ticket_not_found")
-            if ticket.status != "pending":
-                raise _error(HTTPStatus.CONFLICT, "device_login_ticket_not_pending")
-            if ticket.challengeId != request.challengeId:
-                raise _error(HTTPStatus.BAD_REQUEST, "device_login_challenge_mismatch")
-            challenge = store.challenges.get(request.challengeId)
-            if not challenge:
-                raise _error(HTTPStatus.NOT_FOUND, "auth_challenge_not_found")
-            if challenge.expiresAt <= utc_now():
-                store.challenges.pop(challenge.challengeId, None)
-                raise _error(HTTPStatus.GONE, "auth_challenge_expired")
-            if settings.allowed_wallets and challenge.address.lower() not in settings.allowed_wallets:
-                raise _error(HTTPStatus.FORBIDDEN, "auth_wallet_not_allowed")
-            try:
-                signature_verification = verify_signature(
-                    settings=settings,
-                    challenge=challenge,
-                    address=request.address,
-                    signature=request.signature,
-                    public_key=request.publicKey,
-                )
-            except SignatureVerificationError as exc:
-                raise _error(exc.status_code, exc.code) from exc
-
-            issued_at = utc_now()
-            session = SessionRecord(
-                sessionId=new_id("session"),
+        ticket = store.get_ticket(ticket_id)
+        if not ticket:
+            raise _error(HTTPStatus.NOT_FOUND, "device_login_ticket_not_found")
+        if ticket.status != "pending":
+            raise _error(HTTPStatus.CONFLICT, "device_login_ticket_not_pending")
+        if ticket.challengeId != payload.challengeId:
+            raise _error(HTTPStatus.BAD_REQUEST, "device_login_challenge_mismatch")
+        challenge = store.get_challenge(payload.challengeId)
+        if not challenge:
+            raise _error(HTTPStatus.NOT_FOUND, "auth_challenge_not_found")
+        if challenge.expiresAt <= utc_now():
+            store.delete_challenge(challenge.challengeId)
+            raise _error(HTTPStatus.GONE, "auth_challenge_expired")
+        if not store.is_wallet_allowed(challenge.address.lower(), settings):
+            store.add_audit(
+                "device_login_approve",
                 address=challenge.address,
-                network=challenge.network,
-                publicKey=signature_verification.public_key,
-                issuedAt=issued_at,
-                expiresAt=utc_after(settings.session_ttl_seconds),
-                challengeId=challenge.challengeId,
+                result="blocked",
+                details={"reason": "auth_wallet_not_allowed", "ticketId": ticket.ticketId},
             )
-            store.sessions[session.sessionId] = session
-            ticket.status = "approved"
-            ticket.sessionId = session.sessionId
-            store.tickets[ticket.ticketId] = ticket
-            store.challenges.pop(challenge.challengeId, None)
+            raise _error(HTTPStatus.FORBIDDEN, "auth_wallet_not_allowed")
+        try:
+            signature_verification = verify_signature(
+                settings=settings,
+                challenge=challenge,
+                address=payload.address,
+                signature=payload.signature,
+                public_key=payload.publicKey,
+            )
+        except SignatureVerificationError as exc:
+            store.add_audit(
+                "device_login_approve",
+                address=challenge.address,
+                result="blocked",
+                details={"reason": exc.code, "ticketId": ticket.ticketId},
+            )
+            raise _error(exc.status_code, exc.code) from exc
+
+        issued_at = utc_now()
+        session = SessionRecord(
+            sessionId=new_id("session"),
+            address=challenge.address,
+            network=challenge.network,
+            publicKey=signature_verification.public_key,
+            issuedAt=issued_at,
+            expiresAt=utc_after(settings.session_ttl_seconds),
+            challengeId=challenge.challengeId,
+        )
+        store.create_session(session)
+        ticket.status = "approved"
+        ticket.sessionId = session.sessionId
+        store.save_ticket(ticket)
+        store.delete_challenge(challenge.challengeId)
+        store.add_audit(
+            "device_login_approve",
+            address=challenge.address,
+            details={"ticketId": ticket.ticketId, "sessionId": session.sessionId},
+        )
 
         return {
             "ok": True,
@@ -399,7 +529,7 @@ def create_app(settings: Settings | None = None, store: InMemoryStore | None = N
         session_id = current_session_id(request)
         if not session_id:
             raise _error(HTTPStatus.UNAUTHORIZED, "auth_session_required")
-        session = store.sessions.get(session_id)
+        session = store.get_session(session_id)
         if not session:
             raise _error(HTTPStatus.UNAUTHORIZED, "auth_session_required")
         return {"ok": True, "session": _session_view(session)}
@@ -408,7 +538,7 @@ def create_app(settings: Settings | None = None, store: InMemoryStore | None = N
     def validate_session(request: Request):
         store.purge_expired()
         session_id = current_session_id(request)
-        if not session_id or session_id not in store.sessions:
+        if not session_id or not store.get_session(session_id):
             raise _error(HTTPStatus.UNAUTHORIZED, "auth_session_required")
         return Response(status_code=HTTPStatus.NO_CONTENT)
 
@@ -419,8 +549,8 @@ def create_app(settings: Settings | None = None, store: InMemoryStore | None = N
     ):
         session_id = current_session_id(request)
         if session_id:
-            with store.lock:
-                store.sessions.pop(session_id, None)
+            store.delete_session(session_id)
+            store.add_audit("session_logout", details={"sessionId": session_id})
         response.delete_cookie(
             settings.cookie_name,
             domain=settings.cookie_domain or None,
@@ -429,6 +559,66 @@ def create_app(settings: Settings | None = None, store: InMemoryStore | None = N
             samesite="lax",
         )
         return {"ok": True}
+
+    @app.get("/api/admin/wallets")
+    def admin_list_wallets(
+        request: Request,
+        authorization: Annotated[str | None, Header()] = None,
+        x_kbeam_admin_token: Annotated[str | None, Header()] = None,
+    ):
+        require_admin(request, authorization, x_kbeam_admin_token)
+        return {"ok": True, "wallets": [_wallet_view(wallet) for wallet in store.list_wallets()]}
+
+    @app.post("/api/admin/wallets", status_code=HTTPStatus.CREATED)
+    def admin_create_wallet(
+        payload: WalletCreateRequest,
+        request: Request,
+        authorization: Annotated[str | None, Header()] = None,
+        x_kbeam_admin_token: Annotated[str | None, Header()] = None,
+    ):
+        from .store import _wallet_record
+
+        require_admin(request, authorization, x_kbeam_admin_token)
+        wallet = store.upsert_wallet(
+            _wallet_record(
+                payload.address,
+                label=payload.label,
+                role=payload.role,
+                enabled=payload.enabled,
+            )
+        )
+        store.add_audit("admin_wallet_upsert", address=wallet.address, details={"role": wallet.role})
+        return {"ok": True, "wallet": _wallet_view(wallet)}
+
+    @app.patch("/api/admin/wallets/{address}")
+    def admin_update_wallet(
+        address: str,
+        payload: WalletUpdateRequest,
+        request: Request,
+        authorization: Annotated[str | None, Header()] = None,
+        x_kbeam_admin_token: Annotated[str | None, Header()] = None,
+    ):
+        require_admin(request, authorization, x_kbeam_admin_token)
+        wallet = store.update_wallet(
+            address,
+            label=payload.label,
+            role=payload.role,
+            enabled=payload.enabled,
+        )
+        if not wallet:
+            raise _error(HTTPStatus.NOT_FOUND, "wallet_not_found")
+        store.add_audit("admin_wallet_update", address=wallet.address)
+        return {"ok": True, "wallet": _wallet_view(wallet)}
+
+    @app.get("/api/admin/audit-log")
+    def admin_audit_log(
+        request: Request,
+        limit: int = 100,
+        authorization: Annotated[str | None, Header()] = None,
+        x_kbeam_admin_token: Annotated[str | None, Header()] = None,
+    ):
+        require_admin(request, authorization, x_kbeam_admin_token)
+        return {"ok": True, "auditLog": [_audit_view(record) for record in store.list_audit(limit)]}
 
     return app
 
