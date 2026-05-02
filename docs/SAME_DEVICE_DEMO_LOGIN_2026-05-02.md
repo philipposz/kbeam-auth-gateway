@@ -26,6 +26,8 @@ KBeam can use that value to return to the browser after the wallet approval.
   clearly shows that the protected area was unlocked.
 - The success state includes a local logout button for clearing the demo
   session after testing.
+- Long wallet addresses in the success state are rendered as a wrapped inline
+  value so they stay inside the demo panel on narrow screens.
 - The demo includes a share action for X that opens `https://x.com/kbeam_app?s=21`.
 - The top navigation uses the public KBeam logo copied into this repository as
   `src/kbeam_auth_gateway/static/kbeam-logo.png`.

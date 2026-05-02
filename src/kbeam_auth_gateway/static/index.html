@@ -297,8 +297,19 @@
         line-height: 1.05;
       }
       .success-stage span {
+        display: block;
+        max-width: 100%;
         color: #d8f8f1;
         line-height: 1.42;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+      .wallet-address {
+        color: #ffffff;
+        font: inherit;
+        font-weight: 850;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
       .success-actions {
         display: flex;
@@ -556,9 +567,16 @@
 
       function showSession(session) {
         sessionNotice.hidden = false;
-        sessionAddress.textContent = session?.address
-          ? `Wallet ${session.address} is signed in. This browser now has its own secure session.`
-          : "This browser now has its own secure session.";
+        sessionAddress.textContent = "";
+        if (session?.address) {
+          const addressNode = document.createElement("code");
+          addressNode.className = "wallet-address";
+          addressNode.textContent = session.address;
+          sessionAddress.append("Wallet ", addressNode, " is signed in. ");
+          sessionAddress.append("This browser now has its own secure session.");
+        } else {
+          sessionAddress.textContent = "This browser now has its own secure session.";
+        }
         setTicketStatus("approved");
         flash("KBeam login approved.");
       }
