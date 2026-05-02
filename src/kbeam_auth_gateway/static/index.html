@@ -6,19 +6,20 @@
     <title>KBeam Auth Gateway Demo</title>
     <style>
       :root {
-        color-scheme: light;
+        color-scheme: dark;
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #f4f7fb;
-        color: #10151f;
-        --ink: #10151f;
-        --muted: #5b6575;
-        --line: #d8e0eb;
-        --panel: #ffffff;
-        --blue: #0f62fe;
-        --mint: #00a878;
-        --coral: #ef5b5b;
-        --sun: #f4b942;
-        --shadow: 0 24px 70px rgba(16, 21, 31, 0.14);
+        background: #080d0f;
+        color: #f5f7f8;
+        --bg: #080d0f;
+        --panel: #11181b;
+        --panel-2: #0d1316;
+        --line: rgba(73, 234, 203, 0.18);
+        --muted: #8e9aa4;
+        --ink: #f5f7f8;
+        --mint: #42e0c4;
+        --mint-2: #1cae95;
+        --blue: #67a7ff;
+        --shadow: 0 28px 90px rgba(0, 0, 0, 0.42);
       }
       * {
         box-sizing: border-box;
@@ -27,45 +28,58 @@
         margin: 0;
         min-height: 100vh;
         background:
-          linear-gradient(135deg, rgba(15, 98, 254, 0.12), transparent 34%),
-          linear-gradient(315deg, rgba(0, 168, 120, 0.14), transparent 36%),
-          #f4f7fb;
+          radial-gradient(circle at 84% 22%, rgba(66, 224, 196, 0.12), transparent 28%),
+          radial-gradient(circle at 10% 76%, rgba(103, 167, 255, 0.12), transparent 30%),
+          linear-gradient(180deg, #090e10 0%, #070b0d 100%);
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.34;
+        background-image:
+          linear-gradient(rgba(66, 224, 196, 0.08) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(66, 224, 196, 0.06) 1px, transparent 1px);
+        background-size: 54px 54px;
+        mask-image: linear-gradient(180deg, #000 0%, transparent 72%);
       }
       button {
         appearance: none;
-        border: 0;
-        border-radius: 8px;
         min-height: 44px;
-        padding: 11px 16px;
+        border: 0;
+        border-radius: 999px;
+        padding: 11px 17px;
         font: inherit;
-        font-weight: 750;
+        font-weight: 780;
         cursor: pointer;
       }
       button:disabled {
         cursor: default;
-        opacity: 0.46;
+        opacity: 0.42;
       }
       input {
         width: 100%;
-        min-height: 42px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 9px 11px;
+        min-height: 40px;
+        border: 1px solid rgba(255, 255, 255, 0.11);
+        border-radius: 12px;
+        padding: 8px 11px;
         color: var(--ink);
-        background: #f9fbfe;
+        background: rgba(255, 255, 255, 0.04);
         font: inherit;
       }
       main {
+        position: relative;
         width: min(1180px, calc(100vw - 32px));
         margin: 0 auto;
-        padding: 22px 0 40px;
+        padding: 14px 0 34px;
       }
       .nav {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 14px;
-        padding: 8px 0 18px;
+        min-height: 58px;
       }
       .brand {
         display: inline-flex;
@@ -78,21 +92,28 @@
         width: 34px;
         height: 34px;
         place-items: center;
-        border-radius: 8px;
-        background: var(--ink);
+        border-radius: 2px;
+        background: #030607;
+        border: 1px solid rgba(66, 224, 196, 0.28);
         color: #ffffff;
         font-weight: 900;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+      }
+      .nav-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
       }
       .status-strip {
         display: inline-flex;
         align-items: center;
         gap: 8px;
         min-height: 34px;
-        border: 1px solid var(--line);
+        border: 1px solid rgba(255, 255, 255, 0.12);
         border-radius: 999px;
         padding: 6px 12px;
-        background: rgba(255, 255, 255, 0.72);
-        color: var(--muted);
+        background: rgba(255, 255, 255, 0.04);
+        color: #c6d1d7;
         font-size: 13px;
       }
       .pulse {
@@ -100,95 +121,94 @@
         height: 8px;
         border-radius: 50%;
         background: var(--mint);
-        box-shadow: 0 0 0 0 rgba(0, 168, 120, 0.45);
+        box-shadow: 0 0 0 0 rgba(66, 224, 196, 0.42);
         animation: pulse 1.8s infinite;
       }
       .hero {
+        min-height: calc(100svh - 74px);
         display: grid;
-        grid-template-columns: minmax(0, 1.02fr) minmax(360px, 0.98fr);
-        gap: 26px;
+        grid-template-columns: minmax(0, 0.96fr) minmax(390px, 0.84fr);
+        gap: 22px;
         align-items: stretch;
+        padding: 10px 0 0;
+      }
+      .hero-copy,
+      .login-panel,
+      .story-card {
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        border-radius: 24px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.065), rgba(255,255,255,0.032));
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(18px);
       }
       .hero-copy {
-        min-height: 640px;
+        position: relative;
+        overflow: hidden;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
-        overflow: hidden;
-        position: relative;
-        border: 1px solid rgba(16, 21, 31, 0.09);
-        border-radius: 8px;
-        padding: 34px;
-        background:
-          linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.72)),
-          repeating-linear-gradient(135deg, rgba(15,98,254,0.09) 0 1px, transparent 1px 18px);
-        box-shadow: var(--shadow);
+        padding: clamp(22px, 4vw, 42px);
       }
-      .wave-field {
+      .hero-copy::after {
+        content: "";
         position: absolute;
         inset: auto -10% 0;
         height: 42%;
-        opacity: 0.92;
+        background:
+          linear-gradient(168deg, transparent 0 24%, rgba(66,224,196,0.72) 24.4% 24.8%, transparent 25.2% 33%, rgba(103,167,255,0.52) 33.4% 33.8%, transparent 34.2% 43%, rgba(66,224,196,0.34) 43.4% 43.8%, transparent 44.2%),
+          linear-gradient(170deg, transparent 0 58%, rgba(66,224,196,0.3) 58.2% 58.7%, transparent 59%);
+        opacity: 0.7;
         pointer-events: none;
       }
-      .wave {
-        position: absolute;
-        left: 0;
-        width: 120%;
-        height: 2px;
-        background: linear-gradient(90deg, transparent, var(--blue), var(--mint), var(--sun), transparent);
-        transform: rotate(-8deg);
-      }
-      .wave:nth-child(1) { bottom: 34px; }
-      .wave:nth-child(2) { bottom: 74px; opacity: 0.8; }
-      .wave:nth-child(3) { bottom: 114px; opacity: 0.62; }
-      .wave:nth-child(4) { bottom: 154px; opacity: 0.45; }
       .eyebrow {
         display: inline-flex;
         width: fit-content;
-        border: 1px solid rgba(15, 98, 254, 0.24);
+        border: 1px solid rgba(66, 224, 196, 0.42);
         border-radius: 999px;
-        padding: 7px 11px;
-        background: rgba(255, 255, 255, 0.72);
-        color: #0b4bcc;
+        padding: 7px 12px;
+        background: rgba(66, 224, 196, 0.11);
+        color: var(--mint);
         font-size: 12px;
-        font-weight: 820;
-        text-transform: uppercase;
+        font-weight: 830;
       }
       h1 {
-        max-width: 780px;
-        margin: 20px 0 16px;
-        font-size: clamp(48px, 7vw, 94px);
+        max-width: 720px;
+        margin: 18px 0 14px;
+        font-size: clamp(52px, 7.1vw, 92px);
         line-height: 0.93;
         letter-spacing: 0;
       }
+      .accent {
+        color: var(--mint);
+      }
       .lead {
-        max-width: 640px;
+        max-width: 620px;
         margin: 0;
-        color: #303a49;
-        font-size: 20px;
-        line-height: 1.45;
+        color: #aeb8bf;
+        font-size: clamp(18px, 2vw, 21px);
+        line-height: 1.42;
       }
       .hero-actions {
         position: relative;
         z-index: 1;
         display: flex;
-        gap: 12px;
+        gap: 10px;
         flex-wrap: wrap;
-        margin-top: 28px;
+        margin-top: 26px;
       }
       .primary {
-        background: var(--ink);
-        color: #ffffff;
+        background: var(--mint);
+        color: #04100d;
+        box-shadow: 0 14px 34px rgba(66, 224, 196, 0.18);
       }
       .secondary {
-        border: 1px solid var(--line);
-        background: #ffffff;
-        color: var(--ink);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.05);
+        color: #eef5f4;
       }
       .share-button {
-        background: #0f62fe;
-        color: #ffffff;
+        background: #ffffff;
+        color: #091012;
       }
       .proof-row {
         position: relative;
@@ -196,114 +216,107 @@
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 10px;
-        margin-top: 36px;
+        margin-top: 28px;
       }
       .proof {
-        border: 1px solid rgba(16, 21, 31, 0.1);
-        border-radius: 8px;
+        min-height: 92px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 18px;
         padding: 14px;
-        background: rgba(255, 255, 255, 0.78);
+        background: rgba(0, 0, 0, 0.18);
       }
       .proof strong {
         display: block;
         margin-bottom: 5px;
-        font-size: 20px;
+        color: #ffffff;
+        font-size: 18px;
       }
       .proof span {
-        color: var(--muted);
+        color: #9eabb3;
         font-size: 13px;
         line-height: 1.35;
       }
       .login-panel {
-        border: 1px solid rgba(16, 21, 31, 0.09);
-        border-radius: 8px;
-        background: var(--panel);
-        box-shadow: var(--shadow);
         overflow: hidden;
+        align-self: stretch;
       }
       .panel-head {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        padding: 18px;
-        border-bottom: 1px solid var(--line);
+        padding: 18px 18px 14px;
       }
       .panel-title {
         margin: 0;
         font-size: 18px;
       }
       .status-pill {
+        border: 1px solid rgba(66, 224, 196, 0.24);
         border-radius: 999px;
         padding: 7px 10px;
-        background: #eef3ff;
-        color: #0b4bcc;
+        background: rgba(66, 224, 196, 0.1);
+        color: var(--mint);
         font-size: 12px;
-        font-weight: 800;
+        font-weight: 830;
       }
       .qr-zone {
-        padding: 18px;
+        padding: 0 18px 18px;
       }
       #qr {
-        min-height: 320px;
+        min-height: min(50svh, 390px);
         display: grid;
         place-items: center;
-        border: 1px dashed #b6c2d2;
-        border-radius: 8px;
+        border: 1px solid rgba(66, 224, 196, 0.24);
+        border-radius: 22px;
         background:
-          linear-gradient(180deg, rgba(255,255,255,0.92), rgba(250,252,255,0.92)),
-          repeating-linear-gradient(90deg, rgba(15,98,254,0.08) 0 1px, transparent 1px 26px);
-        color: var(--muted);
+          radial-gradient(circle at 50% 40%, rgba(66, 224, 196, 0.12), transparent 46%),
+          rgba(0, 0, 0, 0.22);
+        color: #9eabb3;
         padding: 18px;
         text-align: center;
-        font-weight: 750;
+        font-weight: 780;
       }
       #qr svg {
-        width: min(100%, 265px);
+        width: min(100%, 315px);
         height: auto;
         background: #ffffff;
-        border: 12px solid #ffffff;
-        border-radius: 8px;
-        box-shadow: 0 16px 38px rgba(16, 21, 31, 0.16);
+        border: 14px solid #ffffff;
+        border-radius: 18px;
+        box-shadow: 0 22px 48px rgba(0, 0, 0, 0.34);
       }
       .mobile-actions {
         display: grid;
         grid-template-columns: 1fr;
         gap: 10px;
-        margin-top: 14px;
-      }
-      .field-grid {
-        display: grid;
-        grid-template-columns: 1fr 130px;
-        gap: 10px;
-        margin-top: 14px;
+        margin-top: 12px;
       }
       label {
         display: block;
-        margin: 14px 0 6px;
-        color: var(--muted);
+        margin: 12px 0 6px;
+        color: #8e9aa4;
         font-size: 12px;
-        font-weight: 780;
-        text-transform: uppercase;
+        font-weight: 800;
       }
       .success-stage {
-        margin: 18px;
-        border: 1px solid rgba(0, 168, 120, 0.3);
-        border-radius: 8px;
+        margin-top: 12px;
+        border: 1px solid rgba(66, 224, 196, 0.36);
+        border-radius: 20px;
         background:
-          linear-gradient(135deg, rgba(0, 168, 120, 0.16), rgba(15, 98, 254, 0.08)),
-          #f4fff9;
-        padding: 18px;
+          linear-gradient(135deg, rgba(66, 224, 196, 0.18), rgba(103, 167, 255, 0.08)),
+          rgba(0, 0, 0, 0.2);
+        padding: 16px;
       }
       .success-stage strong {
         display: block;
         margin-bottom: 6px;
-        color: #076d4f;
-        font-size: 24px;
+        color: var(--mint);
+        font-size: clamp(22px, 3vw, 30px);
+        line-height: 1.05;
       }
       .success-stage span {
-        color: #124335;
-        line-height: 1.45;
+        color: #d8f8f1;
+        line-height: 1.42;
       }
       .success-stage[hidden] {
         display: none;
@@ -312,12 +325,9 @@
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 18px;
-        margin-top: 26px;
+        margin-top: 22px;
       }
       .story-card {
-        border: 1px solid rgba(16, 21, 31, 0.09);
-        border-radius: 8px;
-        background: rgba(255, 255, 255, 0.84);
         padding: 20px;
       }
       .story-card h2 {
@@ -326,19 +336,20 @@
       }
       .story-card p {
         margin: 0;
-        color: var(--muted);
-        line-height: 1.55;
+        color: #aab5bd;
+        line-height: 1.52;
       }
       pre {
-        max-height: 240px;
+        max-height: 210px;
         overflow: auto;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
-        margin: 14px 0 0;
-        border-radius: 8px;
-        background: #10151f;
-        color: #eaf1ff;
-        padding: 14px;
+        margin: 12px 0 0;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        background: rgba(0, 0, 0, 0.3);
+        color: #dffaf5;
+        padding: 13px;
         font-size: 12px;
         line-height: 1.45;
       }
@@ -348,42 +359,60 @@
         bottom: 18px;
         z-index: 10;
         max-width: min(360px, calc(100vw - 36px));
-        border: 1px solid rgba(16, 21, 31, 0.12);
-        border-radius: 8px;
-        background: #ffffff;
+        border: 1px solid rgba(66, 224, 196, 0.24);
+        border-radius: 18px;
+        background: #101719;
         box-shadow: var(--shadow);
         padding: 14px 16px;
-        color: var(--ink);
+        color: #f4fffc;
       }
       .toast[hidden] {
         display: none;
       }
       @keyframes pulse {
-        70% { box-shadow: 0 0 0 11px rgba(0, 168, 120, 0); }
-        100% { box-shadow: 0 0 0 0 rgba(0, 168, 120, 0); }
+        70% { box-shadow: 0 0 0 11px rgba(66, 224, 196, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(66, 224, 196, 0); }
       }
       @media (max-width: 900px) {
-        .hero,
-        .developer-band {
-          grid-template-columns: 1fr;
-        }
-        .hero-copy {
-          min-height: auto;
-        }
-      }
-      @media (max-width: 640px) {
         main {
           width: min(100% - 20px, 1180px);
         }
+        .hero {
+          grid-template-columns: 1fr;
+          gap: 14px;
+        }
         .hero-copy {
+          min-height: auto;
           padding: 24px;
         }
-        .proof-row,
-        .field-grid {
+        .login-panel {
+          order: -1;
+        }
+        #qr {
+          min-height: 300px;
+        }
+        .developer-band {
+          grid-template-columns: 1fr;
+        }
+      }
+      @media (max-width: 640px) {
+        .nav {
+          align-items: flex-start;
+          flex-direction: column;
+          padding-bottom: 8px;
+        }
+        .proof-row {
           grid-template-columns: 1fr;
         }
         h1 {
-          font-size: 46px;
+          font-size: 44px;
+        }
+        .hero-actions {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+        }
+        .hero-actions button:first-child {
+          grid-column: 1 / -1;
         }
       }
     </style>
@@ -393,70 +422,66 @@
       <nav class="nav" aria-label="Demo navigation">
         <div class="brand">
           <span class="brand-mark">K</span>
-          <span>KBeam Auth Gateway</span>
+          <span>KBeam Auth Gateway Demo</span>
         </div>
-        <div class="status-strip">
-          <span class="pulse"></span>
-          <span id="liveStatus">Live demo ready</span>
+        <div class="nav-actions">
+          <button id="shareX" class="secondary">Share on X</button>
+          <div class="status-strip">
+            <span class="pulse"></span>
+            <span id="liveStatus">Live demo ready</span>
+          </div>
         </div>
       </nav>
 
       <section class="hero">
         <div class="hero-copy">
           <div>
-            <span class="eyebrow">Open wallet login for protected areas</span>
-            <h1>Never log in again. Use KBeam.</h1>
+            <span class="eyebrow">Public wallet login gateway</span>
+            <h1>Never log in again. <span class="accent">Use KBeam.</span></h1>
             <p class="lead">
-              Add a wallet-signed login to your own protected app without giving KBeam
-              your sessions, user database, passwords, or private routes.
+              Add KBeam login to your own protected area. KBeam approves the
+              challenge, while your site keeps its sessions, permissions, users,
+              and private routes.
             </p>
             <div class="hero-actions">
               <button id="create" class="primary">Start wallet login</button>
               <button id="openKbeam" class="share-button" disabled>Open in KBeam</button>
-              <button id="shareX" class="secondary">Share on X</button>
               <button id="logout" class="secondary">Logout</button>
             </div>
           </div>
-          <div>
-            <div class="proof-row">
-              <div class="proof">
-                <strong>No passwords</strong>
-                <span>The browser waits for a signed wallet approval.</span>
-              </div>
-              <div class="proof">
-                <strong>No lock-in</strong>
-                <span>FastAPI gateway, documented protocol, self-hostable.</span>
-              </div>
-              <div class="proof">
-                <strong>No site secrets</strong>
-                <span>KBeam only signs the explicit login challenge.</span>
-              </div>
+          <div class="proof-row">
+            <div class="proof">
+              <strong>No passwords</strong>
+              <span>Wallet signature instead of another account form.</span>
             </div>
-          </div>
-          <div class="wave-field" aria-hidden="true">
-            <span class="wave"></span>
-            <span class="wave"></span>
-            <span class="wave"></span>
-            <span class="wave"></span>
+            <div class="proof">
+              <strong>No site secrets</strong>
+              <span>KBeam never receives your session cookie or poll token.</span>
+            </div>
+            <div class="proof">
+              <strong>Self-hostable</strong>
+              <span>Review the public gateway and run it for your app.</span>
+            </div>
           </div>
         </div>
 
         <div class="login-panel">
           <div class="panel-head">
-            <h2 class="panel-title">Try the protected-area unlock</h2>
+            <h2 class="panel-title">Protected area unlock</h2>
             <span class="status-pill" id="ticketStatus">idle</span>
           </div>
           <div class="qr-zone">
-            <div id="qr">Start a wallet login to generate a live KBeam ticket.</div>
-            <div class="mobile-actions">
-              <button id="poll" class="secondary" disabled>Check ticket</button>
-            </div>
-            <label for="approveUrl">KBeam link with returnTo</label>
-            <input id="approveUrl" readonly>
+            <div id="qr">Start a wallet login to create a live KBeam QR.</div>
             <div id="sessionNotice" class="success-stage" hidden>
               <strong>Success. Protected area unlocked.</strong>
               <span id="sessionAddress"></span>
             </div>
+            <div class="mobile-actions">
+              <button id="createPanel" class="primary">Start wallet login</button>
+              <button id="poll" class="secondary" disabled>Check ticket</button>
+            </div>
+            <label for="approveUrl">KBeam link with returnTo</label>
+            <input id="approveUrl" readonly>
           </div>
         </div>
       </section>
@@ -465,9 +490,9 @@
         <div class="story-card">
           <h2>Transparent by design</h2>
           <p>
-            The gateway creates a short-lived ticket, KBeam signs a challenge, and
-            the waiting browser receives its own HttpOnly session. KBeam does not
-            receive the browser poll token or the protected site's session cookie.
+            The browser gets a private poll token. KBeam gets an approve token
+            and signs a short-lived challenge. Only the waiting browser receives
+            the HttpOnly session for the protected site.
           </p>
         </div>
         <div class="story-card">
@@ -486,6 +511,7 @@
     <script>
       const state = { ticket: null, pollTimer: null, expiryTimer: null, eventSource: null, pollDelayMs: 2000 };
       const createBtn = document.querySelector("#create");
+      const createPanelBtn = document.querySelector("#createPanel");
       const pollBtn = document.querySelector("#poll");
       const logoutBtn = document.querySelector("#logout");
       const openKbeamBtn = document.querySelector("#openKbeam");
@@ -663,15 +689,17 @@
         }
       }
 
-      createBtn.addEventListener("click", async () => {
+      async function startDeviceLogin() {
         stopPolling();
         clearSessionNotice();
         openKbeamBtn.disabled = true;
         createBtn.disabled = true;
+        createPanelBtn.disabled = true;
         setTicketStatus("creating");
         const result = await request("/api/auth/device-login", { method: "POST" });
         show(result);
         createBtn.disabled = false;
+        createPanelBtn.disabled = false;
         if (result.ok) {
           state.ticket = result.deviceLogin;
           qr.innerHTML = state.ticket.qrSvg;
@@ -684,7 +712,10 @@
           startEvents();
           flash("Ticket created. Scan the QR or open KBeam.");
         }
-      });
+      }
+
+      createBtn.addEventListener("click", startDeviceLogin);
+      createPanelBtn.addEventListener("click", startDeviceLogin);
 
       pollBtn.addEventListener("click", async () => {
         pollTicket().catch((error) => show({ ok: false, error: String(error) }));
@@ -696,11 +727,7 @@
       });
 
       shareXBtn.addEventListener("click", () => {
-        const text = "Never log in again. Use KBeam. Wallet-signed auth for protected areas, with no passwords and no site secrets in the wallet.";
-        const url = new URL("https://twitter.com/intent/tweet");
-        url.searchParams.set("text", text);
-        url.searchParams.set("url", window.location.href);
-        window.open(url.toString(), "_blank", "noopener,noreferrer");
+        window.open("https://x.com/kbeam_app?s=21", "_blank", "noopener,noreferrer");
       });
 
       logoutBtn.addEventListener("click", async () => {

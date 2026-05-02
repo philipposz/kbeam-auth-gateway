@@ -22,8 +22,7 @@ KBeam can use that value to return to the browser after the wallet approval.
   foreground.
 - The redesigned demo keeps a large visible success state so a returned browser
   clearly shows that the protected area was unlocked.
-- The demo includes a share action for X with the public message: "Never log in
-  again. Use KBeam."
+- The demo includes a share action for X that opens `https://x.com/kbeam_app?s=21`.
 
 ## Compatibility
 
