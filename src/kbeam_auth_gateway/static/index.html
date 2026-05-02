@@ -28,21 +28,30 @@
         margin: 0;
         min-height: 100vh;
         background:
-          radial-gradient(circle at 84% 22%, rgba(66, 224, 196, 0.12), transparent 28%),
-          radial-gradient(circle at 10% 76%, rgba(103, 167, 255, 0.12), transparent 30%),
-          linear-gradient(180deg, #090e10 0%, #070b0d 100%);
+          linear-gradient(135deg, rgba(66, 224, 196, 0.08) 0%, transparent 32%),
+          linear-gradient(225deg, rgba(66, 224, 196, 0.1) 0%, transparent 28%),
+          linear-gradient(180deg, #070b0d 0%, #0a1013 46%, #070b0d 100%);
       }
       body::before {
         content: "";
         position: fixed;
         inset: 0;
         pointer-events: none;
-        opacity: 0.34;
-        background-image:
-          linear-gradient(rgba(66, 224, 196, 0.08) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(66, 224, 196, 0.06) 1px, transparent 1px);
-        background-size: 54px 54px;
-        mask-image: linear-gradient(180deg, #000 0%, transparent 72%);
+        opacity: 0.9;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.045) 0%, transparent 20%, rgba(255, 255, 255, 0.018) 100%),
+          linear-gradient(115deg, transparent 0%, rgba(66, 224, 196, 0.07) 42%, transparent 72%);
+        mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.78) 46%, transparent 100%);
+      }
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.32;
+        background:
+          linear-gradient(90deg, rgba(255, 255, 255, 0.06), transparent 18%, transparent 82%, rgba(66, 224, 196, 0.08)),
+          linear-gradient(180deg, transparent 0%, rgba(66, 224, 196, 0.04) 100%);
       }
       button {
         appearance: none;
