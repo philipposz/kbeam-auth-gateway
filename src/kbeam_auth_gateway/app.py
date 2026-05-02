@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 from http import HTTPStatus
 from pathlib import Path
 from typing import Annotated
@@ -65,6 +66,91 @@ def _challenge_view(challenge) -> dict:
 
 def _error(status: int, code: str) -> HTTPException:
     return HTTPException(status_code=status, detail={"ok": False, "error": code})
+
+
+def _render_scan_page(*, ticket_id: str, approve_token: str, status: str, expires_at: str) -> str:
+    safe_ticket_id = html.escape(ticket_id)
+    safe_approve_token = html.escape(approve_token)
+    safe_status = html.escape(status)
+    safe_expires_at = html.escape(expires_at)
+    return f"""<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>KBeam Login Request</title>
+    <style>
+      :root {{
+        color-scheme: light dark;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f7f8fa;
+        color: #20242c;
+      }}
+      body {{
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }}
+      main {{
+        width: min(560px, 100%);
+        background: #ffffff;
+        border: 1px solid #d9dee7;
+        border-radius: 8px;
+        padding: 22px;
+      }}
+      h1 {{
+        font-size: 24px;
+        margin: 0 0 12px;
+        letter-spacing: 0;
+      }}
+      p {{
+        line-height: 1.5;
+      }}
+      dl {{
+        display: grid;
+        grid-template-columns: 110px 1fr;
+        gap: 8px 14px;
+      }}
+      dt {{
+        font-weight: 700;
+      }}
+      dd {{
+        margin: 0;
+        overflow-wrap: anywhere;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }}
+      @media (prefers-color-scheme: dark) {{
+        :root {{
+          background: #11151b;
+          color: #eef2f8;
+        }}
+        main {{
+          background: #171d25;
+          border-color: #313b4b;
+        }}
+      }}
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>KBeam Login Request</h1>
+      <p>This QR code is valid. Open it with a compatible KBeam wallet to approve
+      the login request. A normal browser can only display this status page.</p>
+      <dl>
+        <dt>Ticket</dt>
+        <dd>{safe_ticket_id}</dd>
+        <dt>Status</dt>
+        <dd>{safe_status}</dd>
+        <dt>Expires</dt>
+        <dd>{safe_expires_at}</dd>
+        <dt>Token</dt>
+        <dd>{safe_approve_token}</dd>
+      </dl>
+    </main>
+  </body>
+</html>"""
 
 
 def create_app(settings: Settings | None = None, store: InMemoryStore | None = None) -> FastAPI:
@@ -170,6 +256,25 @@ def create_app(settings: Settings | None = None, store: InMemoryStore | None = N
                     )
                     payload["session"] = _session_view(session)
             return payload
+
+    @app.get("/api/auth/device-login/{ticket_id}/challenge", response_class=HTMLResponse)
+    def challenge_scan_page(
+        ticket_id: str,
+        approve_token: Annotated[str, Query(alias="approveToken")],
+    ):
+        store.purge_expired()
+        with store.lock:
+            ticket = store.tickets.get(ticket_id)
+            if not ticket:
+                raise _error(HTTPStatus.NOT_FOUND, "device_login_ticket_not_found")
+            if ticket.approveToken != approve_token:
+                raise _error(HTTPStatus.FORBIDDEN, "device_login_approve_forbidden")
+            return _render_scan_page(
+                ticket_id=ticket.ticketId,
+                approve_token=approve_token,
+                status=ticket.status,
+                expires_at=isoformat_utc(ticket.expiresAt),
+            )
 
     @app.post(
         "/api/auth/device-login/{ticket_id}/challenge",

@@ -134,6 +134,21 @@ def test_demo_page_is_served():
     assert "/api/auth/device-login" in response.text
 
 
+def test_qr_svg_has_white_background_and_scan_get_page():
+    settings = _settings(allowed_wallets=(), verifier_mode="demo")
+    store = InMemoryStore()
+    client = TestClient(create_app(settings=settings, store=store))
+
+    ticket = client.post("/api/auth/device-login").json()["deviceLogin"]
+    assert 'fill="#ffffff"' in ticket["qrSvg"]
+
+    response = client.get(ticket["approveURL"].replace("https://auth.example.com", ""))
+
+    assert response.status_code == 200
+    assert "KBeam Login Request" in response.text
+    assert ticket["ticketId"] in response.text
+
+
 def test_rejects_wallet_outside_allowlist():
     private_key = _private_key()
     address = _address(private_key)
