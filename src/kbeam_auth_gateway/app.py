@@ -43,6 +43,15 @@ def _public_ticket(ticket) -> dict:
     }
 
 
+def _ticket_status_view(ticket) -> dict:
+    return {
+        "ticketId": ticket.ticketId,
+        "status": ticket.status,
+        "issuedAt": isoformat_utc(ticket.issuedAt),
+        "expiresAt": isoformat_utc(ticket.expiresAt),
+    }
+
+
 def _session_view(session) -> dict:
     return {
         "sessionId": session.sessionId,
@@ -351,7 +360,15 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
                 if not current:
                     yield "event: expired\ndata: {\"ok\":false,\"error\":\"device_login_ticket_expired\"}\n\n"
                     break
-                payload = {"ok": True, "deviceLogin": _public_ticket(current)}
+                payload = {
+                    "ok": True,
+                    "deviceLogin": _ticket_status_view(current),
+                    "session": None,
+                }
+                if current.status == "approved" and current.sessionId:
+                    session = store.get_session(current.sessionId)
+                    if session:
+                        payload["session"] = _session_view(session)
                 if current.status != last_status:
                     yield f"event: status\ndata: {json.dumps(payload)}\n\n"
                     last_status = current.status

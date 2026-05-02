@@ -343,6 +343,8 @@ def test_sse_ticket_events_emit_initial_status():
 
     assert "event: status" in first_chunk
     assert ticket["ticketId"] in first_chunk
+    assert "qrSvg" not in first_chunk
+    assert "demo-public-key" in first_chunk
 
 
 def test_rate_limit_blocks_excess_device_login_requests():

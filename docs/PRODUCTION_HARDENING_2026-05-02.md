@@ -15,6 +15,7 @@ single-node deployment.
   - ticket approval
   - admin routes
 - The browser demo uses Server-Sent Events for ticket status changes.
+- SSE status payloads are compact and do not repeat the QR SVG.
 - The browser demo falls back to polling with backoff when SSE is unavailable.
 - The browser demo stops automatically when the ticket expires.
 
