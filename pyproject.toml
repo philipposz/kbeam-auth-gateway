@@ -13,6 +13,7 @@ dependencies = [
   "coincurve>=21,<22",
   "fastapi>=0.115,<1",
   "pydantic>=2,<3",
+  "psycopg[binary]>=3,<4",
   "python-dotenv>=1,<2",
   "qrcode>=8,<9",
   "uvicorn[standard]>=0.34,<1",

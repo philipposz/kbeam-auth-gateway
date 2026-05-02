@@ -481,7 +481,7 @@ class SQLiteStore:
                 wallet.address,
                 wallet.label,
                 wallet.role,
-                1 if wallet.enabled else 0,
+                wallet.enabled,
                 isoformat_utc(wallet.createdAt),
                 isoformat_utc(wallet.updatedAt),
             ),
@@ -589,10 +589,107 @@ class SQLiteStore:
             return True
 
 
+class _PostgresConnection:
+    def __init__(self, dsn: str) -> None:
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+        except ImportError as exc:
+            raise RuntimeError("Install psycopg to use KBEAM_AUTH_STORE_BACKEND=postgres") from exc
+        self._conn = psycopg.connect(dsn, row_factory=dict_row)
+
+    def execute(self, sql: str, params: tuple = ()):
+        return self._conn.execute(sql.replace("?", "%s"), params)
+
+    def commit(self) -> None:
+        self._conn.commit()
+
+
+class PostgresStore(SQLiteStore):
+    def __init__(self, dsn: str) -> None:
+        self._lock = threading.RLock()
+        self._conn = _PostgresConnection(dsn)
+        self.rate_events: dict[str, list[float]] = {}
+        self._migrate()
+
+    def _migrate(self) -> None:
+        statements = [
+            """
+            create table if not exists tickets (
+                ticket_id text primary key,
+                poll_token text not null,
+                approve_token text not null,
+                approve_url text not null,
+                qr_svg text not null,
+                status text not null,
+                issued_at text not null,
+                expires_at text not null,
+                challenge_id text,
+                session_id text
+            )
+            """,
+            """
+            create table if not exists challenges (
+                challenge_id text primary key,
+                ticket_id text not null,
+                address text not null,
+                network text not null,
+                nonce text not null,
+                issued_at text not null,
+                expires_at text not null,
+                origin text not null,
+                message text not null
+            )
+            """,
+            """
+            create table if not exists sessions (
+                session_id text primary key,
+                address text not null,
+                network text not null,
+                public_key text not null,
+                issued_at text not null,
+                expires_at text not null,
+                challenge_id text not null
+            )
+            """,
+            """
+            create table if not exists wallets (
+                address text primary key,
+                label text not null default '',
+                role text not null default 'user',
+                enabled boolean not null default true,
+                created_at text not null,
+                updated_at text not null
+            )
+            """,
+            """
+            create table if not exists audit_log (
+                id bigserial primary key,
+                event text not null,
+                address text,
+                result text not null,
+                details text not null,
+                created_at text not null
+            )
+            """,
+            "create index if not exists tickets_status_idx on tickets (status)",
+            "create index if not exists tickets_expires_at_idx on tickets (expires_at)",
+            "create index if not exists challenges_expires_at_idx on challenges (expires_at)",
+            "create index if not exists sessions_expires_at_idx on sessions (expires_at)",
+            "create index if not exists audit_log_created_at_idx on audit_log (created_at)",
+        ]
+        with self.lock:
+            for statement in statements:
+                self._conn.execute(statement)
+            self._conn.commit()
+
+
 def create_store(settings: Settings) -> AuthStore:
     if settings.store_backend == "memory":
         store: AuthStore = InMemoryStore()
-    else:
+    elif settings.store_backend == "sqlite":
         store = SQLiteStore(settings.sqlite_path)
+    else:
+        store = PostgresStore(settings.postgres_dsn)
     store.bootstrap(settings)
     return store

@@ -53,6 +53,7 @@ class Settings:
     wallet_policy: str = "allowlist"
     store_backend: str = "sqlite"
     sqlite_path: str = "./var/kbeam-auth-gateway.sqlite3"
+    postgres_dsn: str = ""
     admin_token: str = ""
     max_pending_tickets: int = 1000
     rate_limit_window_seconds: int = 60
@@ -83,6 +84,7 @@ class Settings:
             wallet_policy=_env("KBEAM_AUTH_WALLET_POLICY", "allowlist").lower(),
             store_backend=_env("KBEAM_AUTH_STORE_BACKEND", "sqlite").lower(),
             sqlite_path=_env("KBEAM_AUTH_SQLITE_PATH", "./var/kbeam-auth-gateway.sqlite3"),
+            postgres_dsn=_env("KBEAM_AUTH_POSTGRES_DSN", ""),
             admin_token=_env("KBEAM_AUTH_ADMIN_TOKEN", ""),
             max_pending_tickets=_env_int("KBEAM_AUTH_MAX_PENDING_TICKETS", 1000),
             rate_limit_window_seconds=_env_int("KBEAM_AUTH_RATE_LIMIT_WINDOW_SECONDS", 60),
@@ -114,10 +116,12 @@ class Settings:
             errors.append("KBEAM_AUTH_SIGNATURE_VERIFIER_MODE must be native, demo, or disabled")
         if self.wallet_policy not in {"open", "allowlist"}:
             errors.append("KBEAM_AUTH_WALLET_POLICY must be open or allowlist")
-        if self.store_backend not in {"memory", "sqlite"}:
-            errors.append("KBEAM_AUTH_STORE_BACKEND must be memory or sqlite")
+        if self.store_backend not in {"memory", "sqlite", "postgres"}:
+            errors.append("KBEAM_AUTH_STORE_BACKEND must be memory, sqlite, or postgres")
         if self.store_backend == "sqlite" and not self.sqlite_path:
             errors.append("KBEAM_AUTH_SQLITE_PATH is required when KBEAM_AUTH_STORE_BACKEND=sqlite")
+        if self.store_backend == "postgres" and not self.postgres_dsn:
+            errors.append("KBEAM_AUTH_POSTGRES_DSN is required when KBEAM_AUTH_STORE_BACKEND=postgres")
         if self.max_pending_tickets < 1:
             errors.append("KBEAM_AUTH_MAX_PENDING_TICKETS must be at least 1")
         if self.rate_limit_window_seconds < 1:

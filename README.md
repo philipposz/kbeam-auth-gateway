@@ -66,7 +66,7 @@ address. `demo` mode is available only for local flow tests.
 
 ## Production Features
 
-- SQLite-backed tickets, sessions, wallets, and audit log
+- SQLite or Postgres-backed tickets, sessions, wallets, and audit log
 - wallet policy: `open` for demos or `allowlist` for protected deployments
 - admin API protected by `KBEAM_AUTH_ADMIN_TOKEN`
 - per-IP rate limits for ticket creation, polling, SSE, challenge, approval, and admin routes
@@ -85,6 +85,9 @@ curl -X POST -H "Authorization: Bearer $KBEAM_AUTH_ADMIN_TOKEN" \
   -d '{"address":"kaspa:example","label":"Example Wallet","role":"admin","enabled":true}' \
   https://auth.example.com/api/admin/wallets
 ```
+
+Use `KBEAM_AUTH_STORE_BACKEND=postgres` with `KBEAM_AUTH_POSTGRES_DSN` when the
+gateway should share durable state across rolling releases or multiple workers.
 
 ## Docker
 

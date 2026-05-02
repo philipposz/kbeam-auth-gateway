@@ -361,6 +361,18 @@ def test_rate_limit_blocks_excess_device_login_requests():
     assert blocked.json()["error"] == "rate_limit_exceeded"
 
 
+def test_postgres_backend_requires_dsn():
+    missing_dsn = replace(
+        _settings(allowed_wallets=(), verifier_mode="demo", wallet_policy="open"),
+        store_backend="postgres",
+        postgres_dsn="",
+    )
+    assert "KBEAM_AUTH_POSTGRES_DSN is required" in "\n".join(missing_dsn.validate())
+
+    configured = replace(missing_dsn, postgres_dsn="postgresql://example:example@localhost/example")
+    assert "KBEAM_AUTH_POSTGRES_DSN is required" not in "\n".join(configured.validate())
+
+
 def test_sqlite_wallet_admin_and_audit_log(tmp_path):
     private_key = _private_key()
     address = _address(private_key)

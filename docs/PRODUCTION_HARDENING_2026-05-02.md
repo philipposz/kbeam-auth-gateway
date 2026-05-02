@@ -24,10 +24,10 @@ single-node deployment.
 `KBEAM_AUTH_STORE_BACKEND=sqlite` stores tickets, challenges, sessions, wallets,
 and audit records in `KBEAM_AUTH_SQLITE_PATH`.
 
-`KBEAM_AUTH_STORE_BACKEND=memory` remains useful for tests and throwaway demos.
+`KBEAM_AUTH_STORE_BACKEND=postgres` stores the same records in PostgreSQL using
+`KBEAM_AUTH_POSTGRES_DSN`.
 
-Postgres is not enabled in code yet. The public store boundary is now explicit
-enough to add a Postgres implementation without changing route behavior.
+`KBEAM_AUTH_STORE_BACKEND=memory` remains useful for tests and throwaway demos.
 
 ## Wallet Policy
 
@@ -64,11 +64,17 @@ Routes:
 
 ## Rollback
 
-1. Set `KBEAM_AUTH_STORE_BACKEND=memory` for a stateless rollback.
+1. Set `KBEAM_AUTH_STORE_BACKEND=memory` for a stateless rollback, or set
+   `KBEAM_AUTH_STORE_BACKEND=sqlite` with `KBEAM_AUTH_SQLITE_PATH` for a
+   single-node durable rollback.
 2. Set `KBEAM_AUTH_WALLET_POLICY=open` if wallet allowlist configuration blocks
    a demo environment.
 3. Restart the gateway.
 4. If the new demo behavior is the problem, roll back to release `cd0929e`.
 
 SQLite data is isolated in `KBEAM_AUTH_SQLITE_PATH`; removing that file removes
+runtime tickets, sessions, wallets, and audit records.
+
+Postgres rollback uses the same application rollback steps. Database schema
+creation is additive; keep the database intact unless intentionally resetting
 runtime tickets, sessions, wallets, and audit records.
