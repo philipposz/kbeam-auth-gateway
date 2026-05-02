@@ -20,6 +20,10 @@ KBeam can use that value to return to the browser after the wallet approval.
 - When the browser becomes visible or focused again, it polls the ticket once
   immediately. This covers mobile browsers that pause SSE while KBeam is in the
   foreground.
+- The redesigned demo keeps a large visible success state so a returned browser
+  clearly shows that the protected area was unlocked.
+- The demo includes a share action for X with the public message: "Never log in
+  again. Use KBeam."
 
 ## Compatibility
 

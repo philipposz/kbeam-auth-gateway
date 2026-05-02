@@ -152,12 +152,14 @@ def test_demo_page_is_served():
     assert response.status_code == 200
     assert "KBeam Auth Gateway Demo" in response.text
     assert "/api/auth/device-login" in response.text
-    assert "Login successful" in response.text
+    assert "Success. Protected area unlocked." in response.text
     assert "EventSource" in response.text
-    assert "QR expired" in response.text
+    assert "Ticket expired" in response.text
     assert "Open in KBeam" in response.text
+    assert "Share on X" in response.text
     assert "appendDeviceLoginReturnTo" in response.text
     assert "visibilitychange" in response.text
+    assert "Never log in again. Use KBeam." in response.text
 
 
 def test_qr_svg_has_white_background_and_scan_get_page():

@@ -5,6 +5,10 @@ intended to become a public reference implementation for the KBeam login
 protocol, while application-specific code and private deployment details remain
 outside this repository.
 
+The core idea is simple: never build another password login. A protected site can
+let KBeam approve a short-lived challenge, while the site keeps its own session,
+permissions, data, and private routes.
+
 ## Goal
 
 The gateway owns authentication only:
@@ -26,6 +30,7 @@ secrets, private hostnames, and internal infrastructure notes are out of scope.
 
 - [Public gateway plan](docs/PUBLIC_KBEAM_AUTH_GATEWAY_PLAN_2026-05-02.md)
 - [Protocol v1](docs/protocol-v1.md)
+- [Public login transparency](docs/PUBLIC_LOGIN_TRANSPARENCY_2026-05-02.md)
 - [Native signature verifier](docs/native-signature-verifier.md)
 - [Nginx auth request integration](docs/nginx-auth-request.md)
 - [Deployment examples](docs/deployment-examples.md)

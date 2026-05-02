@@ -6,10 +6,19 @@
     <title>KBeam Auth Gateway Demo</title>
     <style>
       :root {
-        color-scheme: light dark;
-        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #f7f8fa;
-        color: #20242c;
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f4f7fb;
+        color: #10151f;
+        --ink: #10151f;
+        --muted: #5b6575;
+        --line: #d8e0eb;
+        --panel: #ffffff;
+        --blue: #0f62fe;
+        --mint: #00a878;
+        --coral: #ef5b5b;
+        --sun: #f4b942;
+        --shadow: 0 24px 70px rgba(16, 21, 31, 0.14);
       }
       * {
         box-sizing: border-box;
@@ -17,199 +26,489 @@
       body {
         margin: 0;
         min-height: 100vh;
+        background:
+          linear-gradient(135deg, rgba(15, 98, 254, 0.12), transparent 34%),
+          linear-gradient(315deg, rgba(0, 168, 120, 0.14), transparent 36%),
+          #f4f7fb;
       }
-      main {
-        width: min(980px, calc(100vw - 32px));
-        margin: 0 auto;
-        padding: 32px 0;
-      }
-      header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        margin-bottom: 28px;
-      }
-      h1 {
-        font-size: 28px;
-        line-height: 1.1;
-        margin: 0;
-        letter-spacing: 0;
-      }
-      section {
-        display: grid;
-        grid-template-columns: minmax(260px, 360px) 1fr;
-        gap: 24px;
-        align-items: start;
-      }
-      .panel {
-        background: #ffffff;
-        border: 1px solid #d9dee7;
-        border-radius: 8px;
-        padding: 18px;
-      }
-      .controls {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-      }
-      .same-device-controls {
-        margin-top: 14px;
-      }
-      button, a.button {
+      button {
         appearance: none;
-        border: 1px solid #2f6fed;
-        background: #2f6fed;
-        color: #ffffff;
-        border-radius: 6px;
-        padding: 10px 14px;
+        border: 0;
+        border-radius: 8px;
+        min-height: 44px;
+        padding: 11px 16px;
         font: inherit;
-        font-weight: 650;
+        font-weight: 750;
         cursor: pointer;
-        text-decoration: none;
-      }
-      button.secondary, a.button.secondary {
-        background: #ffffff;
-        color: #2f6fed;
       }
       button:disabled {
-        opacity: 0.55;
         cursor: default;
-      }
-      label {
-        display: block;
-        font-size: 13px;
-        font-weight: 650;
-        margin: 16px 0 6px;
+        opacity: 0.46;
       }
       input {
         width: 100%;
-        min-height: 40px;
-        border: 1px solid #c7ceda;
-        border-radius: 6px;
-        padding: 8px 10px;
+        min-height: 42px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 9px 11px;
+        color: var(--ink);
+        background: #f9fbfe;
         font: inherit;
       }
-      pre {
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
-        min-height: 260px;
-        margin: 0;
-        background: #171b22;
-        color: #e9edf5;
+      main {
+        width: min(1180px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 22px 0 40px;
+      }
+      .nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 8px 0 18px;
+      }
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 850;
+      }
+      .brand-mark {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
         border-radius: 8px;
-        padding: 16px;
+        background: var(--ink);
+        color: #ffffff;
+        font-weight: 900;
+      }
+      .status-strip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 34px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 6px 12px;
+        background: rgba(255, 255, 255, 0.72);
+        color: var(--muted);
         font-size: 13px;
+      }
+      .pulse {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--mint);
+        box-shadow: 0 0 0 0 rgba(0, 168, 120, 0.45);
+        animation: pulse 1.8s infinite;
+      }
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.02fr) minmax(360px, 0.98fr);
+        gap: 26px;
+        align-items: stretch;
+      }
+      .hero-copy {
+        min-height: 640px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        overflow: hidden;
+        position: relative;
+        border: 1px solid rgba(16, 21, 31, 0.09);
+        border-radius: 8px;
+        padding: 34px;
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.72)),
+          repeating-linear-gradient(135deg, rgba(15,98,254,0.09) 0 1px, transparent 1px 18px);
+        box-shadow: var(--shadow);
+      }
+      .wave-field {
+        position: absolute;
+        inset: auto -10% 0;
+        height: 42%;
+        opacity: 0.92;
+        pointer-events: none;
+      }
+      .wave {
+        position: absolute;
+        left: 0;
+        width: 120%;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, var(--blue), var(--mint), var(--sun), transparent);
+        transform: rotate(-8deg);
+      }
+      .wave:nth-child(1) { bottom: 34px; }
+      .wave:nth-child(2) { bottom: 74px; opacity: 0.8; }
+      .wave:nth-child(3) { bottom: 114px; opacity: 0.62; }
+      .wave:nth-child(4) { bottom: 154px; opacity: 0.45; }
+      .eyebrow {
+        display: inline-flex;
+        width: fit-content;
+        border: 1px solid rgba(15, 98, 254, 0.24);
+        border-radius: 999px;
+        padding: 7px 11px;
+        background: rgba(255, 255, 255, 0.72);
+        color: #0b4bcc;
+        font-size: 12px;
+        font-weight: 820;
+        text-transform: uppercase;
+      }
+      h1 {
+        max-width: 780px;
+        margin: 20px 0 16px;
+        font-size: clamp(48px, 7vw, 94px);
+        line-height: 0.93;
+        letter-spacing: 0;
+      }
+      .lead {
+        max-width: 640px;
+        margin: 0;
+        color: #303a49;
+        font-size: 20px;
         line-height: 1.45;
+      }
+      .hero-actions {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 28px;
+      }
+      .primary {
+        background: var(--ink);
+        color: #ffffff;
+      }
+      .secondary {
+        border: 1px solid var(--line);
+        background: #ffffff;
+        color: var(--ink);
+      }
+      .share-button {
+        background: #0f62fe;
+        color: #ffffff;
+      }
+      .proof-row {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 36px;
+      }
+      .proof {
+        border: 1px solid rgba(16, 21, 31, 0.1);
+        border-radius: 8px;
+        padding: 14px;
+        background: rgba(255, 255, 255, 0.78);
+      }
+      .proof strong {
+        display: block;
+        margin-bottom: 5px;
+        font-size: 20px;
+      }
+      .proof span {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.35;
+      }
+      .login-panel {
+        border: 1px solid rgba(16, 21, 31, 0.09);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 18px;
+        border-bottom: 1px solid var(--line);
+      }
+      .panel-title {
+        margin: 0;
+        font-size: 18px;
+      }
+      .status-pill {
+        border-radius: 999px;
+        padding: 7px 10px;
+        background: #eef3ff;
+        color: #0b4bcc;
+        font-size: 12px;
+        font-weight: 800;
+      }
+      .qr-zone {
+        padding: 18px;
       }
       #qr {
-        min-height: 260px;
+        min-height: 320px;
         display: grid;
         place-items: center;
-        border: 1px dashed #b5becd;
+        border: 1px dashed #b6c2d2;
         border-radius: 8px;
-        background: #ffffff;
-        color: #20242c;
-        padding: 10px;
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.92), rgba(250,252,255,0.92)),
+          repeating-linear-gradient(90deg, rgba(15,98,254,0.08) 0 1px, transparent 1px 26px);
+        color: var(--muted);
+        padding: 18px;
+        text-align: center;
+        font-weight: 750;
       }
       #qr svg {
-        width: min(100%, 240px);
+        width: min(100%, 265px);
         height: auto;
         background: #ffffff;
-        border-radius: 4px;
-      }
-      .status {
-        font-weight: 700;
-      }
-      .notice {
-        margin-top: 16px;
+        border: 12px solid #ffffff;
         border-radius: 8px;
-        border: 1px solid #c7ceda;
-        padding: 12px;
+        box-shadow: 0 16px 38px rgba(16, 21, 31, 0.16);
+      }
+      .mobile-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+        margin-top: 14px;
+      }
+      .field-grid {
+        display: grid;
+        grid-template-columns: 1fr 130px;
+        gap: 10px;
+        margin-top: 14px;
+      }
+      label {
+        display: block;
+        margin: 14px 0 6px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 780;
+        text-transform: uppercase;
+      }
+      .success-stage {
+        margin: 18px;
+        border: 1px solid rgba(0, 168, 120, 0.3);
+        border-radius: 8px;
+        background:
+          linear-gradient(135deg, rgba(0, 168, 120, 0.16), rgba(15, 98, 254, 0.08)),
+          #f4fff9;
+        padding: 18px;
+      }
+      .success-stage strong {
+        display: block;
+        margin-bottom: 6px;
+        color: #076d4f;
+        font-size: 24px;
+      }
+      .success-stage span {
+        color: #124335;
         line-height: 1.45;
       }
-      .notice strong {
-        display: block;
-        margin-bottom: 4px;
-      }
-      .notice.success {
-        background: #ecfdf3;
-        border-color: #8bd7a6;
-        color: #15572b;
-      }
-      .notice[hidden] {
+      .success-stage[hidden] {
         display: none;
       }
-      @media (max-width: 760px) {
-        section {
+      .developer-band {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+        margin-top: 26px;
+      }
+      .story-card {
+        border: 1px solid rgba(16, 21, 31, 0.09);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.84);
+        padding: 20px;
+      }
+      .story-card h2 {
+        margin: 0 0 10px;
+        font-size: 22px;
+      }
+      .story-card p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+      pre {
+        max-height: 240px;
+        overflow: auto;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        margin: 14px 0 0;
+        border-radius: 8px;
+        background: #10151f;
+        color: #eaf1ff;
+        padding: 14px;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .toast {
+        position: fixed;
+        right: 18px;
+        bottom: 18px;
+        z-index: 10;
+        max-width: min(360px, calc(100vw - 36px));
+        border: 1px solid rgba(16, 21, 31, 0.12);
+        border-radius: 8px;
+        background: #ffffff;
+        box-shadow: var(--shadow);
+        padding: 14px 16px;
+        color: var(--ink);
+      }
+      .toast[hidden] {
+        display: none;
+      }
+      @keyframes pulse {
+        70% { box-shadow: 0 0 0 11px rgba(0, 168, 120, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(0, 168, 120, 0); }
+      }
+      @media (max-width: 900px) {
+        .hero,
+        .developer-band {
           grid-template-columns: 1fr;
         }
-        header {
-          align-items: flex-start;
-          flex-direction: column;
+        .hero-copy {
+          min-height: auto;
         }
       }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          background: #11151b;
-          color: #eef2f8;
+      @media (max-width: 640px) {
+        main {
+          width: min(100% - 20px, 1180px);
         }
-        .panel, input, button.secondary, a.button.secondary {
-          background: #171d25;
-          border-color: #313b4b;
-          color: #eef2f8;
+        .hero-copy {
+          padding: 24px;
         }
-        .notice.success {
-          background: #10391f;
-          border-color: #2d854c;
-          color: #d9fbe3;
+        .proof-row,
+        .field-grid {
+          grid-template-columns: 1fr;
+        }
+        h1 {
+          font-size: 46px;
         }
       }
     </style>
   </head>
   <body>
     <main>
-      <header>
-        <h1>KBeam Auth Gateway Demo</h1>
-        <div class="controls">
-          <button id="create">New login</button>
-          <button id="poll" class="secondary" disabled>Poll</button>
-          <button id="logout" class="secondary">Logout</button>
+      <nav class="nav" aria-label="Demo navigation">
+        <div class="brand">
+          <span class="brand-mark">K</span>
+          <span>KBeam Auth Gateway</span>
         </div>
-      </header>
-      <section>
-        <div class="panel">
-          <div id="qr">No login ticket yet.</div>
-          <div class="controls same-device-controls">
-            <button id="openKbeam" class="secondary" disabled>Open in KBeam</button>
+        <div class="status-strip">
+          <span class="pulse"></span>
+          <span id="liveStatus">Live demo ready</span>
+        </div>
+      </nav>
+
+      <section class="hero">
+        <div class="hero-copy">
+          <div>
+            <span class="eyebrow">Open wallet login for protected areas</span>
+            <h1>Never log in again. Use KBeam.</h1>
+            <p class="lead">
+              Add a wallet-signed login to your own protected app without giving KBeam
+              your sessions, user database, passwords, or private routes.
+            </p>
+            <div class="hero-actions">
+              <button id="create" class="primary">Start wallet login</button>
+              <button id="openKbeam" class="share-button" disabled>Open in KBeam</button>
+              <button id="shareX" class="secondary">Share on X</button>
+              <button id="logout" class="secondary">Logout</button>
+            </div>
           </div>
-          <label for="approveUrl">Approve URL</label>
-          <input id="approveUrl" readonly>
-          <label for="ticketStatus">Ticket status</label>
-          <input id="ticketStatus" class="status" readonly value="idle">
-          <div id="sessionNotice" class="notice success" hidden>
-            <strong>Login successful</strong>
-            <span id="sessionAddress"></span>
+          <div>
+            <div class="proof-row">
+              <div class="proof">
+                <strong>No passwords</strong>
+                <span>The browser waits for a signed wallet approval.</span>
+              </div>
+              <div class="proof">
+                <strong>No lock-in</strong>
+                <span>FastAPI gateway, documented protocol, self-hostable.</span>
+              </div>
+              <div class="proof">
+                <strong>No site secrets</strong>
+                <span>KBeam only signs the explicit login challenge.</span>
+              </div>
+            </div>
+          </div>
+          <div class="wave-field" aria-hidden="true">
+            <span class="wave"></span>
+            <span class="wave"></span>
+            <span class="wave"></span>
+            <span class="wave"></span>
           </div>
         </div>
-        <pre id="log">{}</pre>
+
+        <div class="login-panel">
+          <div class="panel-head">
+            <h2 class="panel-title">Try the protected-area unlock</h2>
+            <span class="status-pill" id="ticketStatus">idle</span>
+          </div>
+          <div class="qr-zone">
+            <div id="qr">Start a wallet login to generate a live KBeam ticket.</div>
+            <div class="mobile-actions">
+              <button id="poll" class="secondary" disabled>Check ticket</button>
+            </div>
+            <label for="approveUrl">KBeam link with returnTo</label>
+            <input id="approveUrl" readonly>
+            <div id="sessionNotice" class="success-stage" hidden>
+              <strong>Success. Protected area unlocked.</strong>
+              <span id="sessionAddress"></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="developer-band" aria-label="Gateway transparency">
+        <div class="story-card">
+          <h2>Transparent by design</h2>
+          <p>
+            The gateway creates a short-lived ticket, KBeam signs a challenge, and
+            the waiting browser receives its own HttpOnly session. KBeam does not
+            receive the browser poll token or the protected site's session cookie.
+          </p>
+        </div>
+        <div class="story-card">
+          <h2>Build it into your own app</h2>
+          <p>
+            Review the protocol, run the tests, choose SQLite or Postgres, enable
+            an allowlist, then put it in front of your own private area.
+          </p>
+          <pre id="log">{}</pre>
+        </div>
       </section>
     </main>
+
+    <div class="toast" id="toast" hidden></div>
+
     <script>
       const state = { ticket: null, pollTimer: null, expiryTimer: null, eventSource: null, pollDelayMs: 2000 };
       const createBtn = document.querySelector("#create");
       const pollBtn = document.querySelector("#poll");
       const logoutBtn = document.querySelector("#logout");
       const openKbeamBtn = document.querySelector("#openKbeam");
+      const shareXBtn = document.querySelector("#shareX");
       const qr = document.querySelector("#qr");
       const approveUrl = document.querySelector("#approveUrl");
       const ticketStatus = document.querySelector("#ticketStatus");
       const sessionNotice = document.querySelector("#sessionNotice");
       const sessionAddress = document.querySelector("#sessionAddress");
+      const liveStatus = document.querySelector("#liveStatus");
+      const toast = document.querySelector("#toast");
       const log = document.querySelector("#log");
 
       function show(value) {
         log.textContent = JSON.stringify(value, null, 2);
+      }
+
+      function flash(message) {
+        toast.textContent = message;
+        toast.hidden = false;
+        window.setTimeout(() => {
+          toast.hidden = true;
+        }, 3200);
       }
 
       async function request(path, options = {}) {
@@ -240,26 +539,30 @@
         }
       }
 
+      function setTicketStatus(status) {
+        ticketStatus.textContent = status;
+        liveStatus.textContent = status === "approved" ? "Wallet session active" : `Ticket ${status}`;
+      }
+
       function showSession(session) {
         sessionNotice.hidden = false;
-        sessionNotice.classList.add("success");
         sessionAddress.textContent = session?.address
-          ? `Wallet ${session.address} is signed in.`
-          : "Session is active.";
+          ? `Wallet ${session.address} is signed in. This browser now has its own secure session.`
+          : "This browser now has its own secure session.";
+        setTicketStatus("approved");
+        flash("KBeam login approved.");
       }
 
       function clearSessionNotice() {
         sessionNotice.hidden = true;
-        sessionNotice.classList.remove("success");
         sessionAddress.textContent = "";
       }
 
       function showExpired() {
         stopPolling();
-        ticketStatus.value = "expired";
+        setTicketStatus("expired");
         sessionNotice.hidden = false;
-        sessionNotice.classList.remove("success");
-        sessionAddress.textContent = "QR expired. Create a new login ticket.";
+        sessionAddress.textContent = "Ticket expired. Start a new wallet login.";
         pollBtn.disabled = true;
         openKbeamBtn.disabled = true;
       }
@@ -294,7 +597,7 @@
         const result = await request(`/api/auth/device-login/${state.ticket.ticketId}?${query}`);
         show(result);
         if (result.ok) {
-          ticketStatus.value = result.deviceLogin.status;
+          setTicketStatus(result.deviceLogin.status);
           if (result.session) {
             showSession(result.session);
             stopPolling();
@@ -317,7 +620,7 @@
             show({ ok: false, error: String(error) });
             state.pollDelayMs = Math.min(Math.round(state.pollDelayMs * 1.5), 10000);
           }
-          if (state.ticket && !sessionNotice.classList.contains("success") && ticketStatus.value !== "expired") {
+          if (state.ticket && ticketStatus.textContent !== "approved" && ticketStatus.textContent !== "expired") {
             scheduleFallbackPoll();
           }
         }, state.pollDelayMs);
@@ -333,7 +636,7 @@
         state.eventSource.addEventListener("status", (event) => {
           const payload = JSON.parse(event.data);
           show(payload);
-          ticketStatus.value = payload.deviceLogin.status;
+          setTicketStatus(payload.deviceLogin.status);
         });
         state.eventSource.addEventListener("approved", async (event) => {
           const payload = JSON.parse(event.data);
@@ -364,18 +667,22 @@
         stopPolling();
         clearSessionNotice();
         openKbeamBtn.disabled = true;
+        createBtn.disabled = true;
+        setTicketStatus("creating");
         const result = await request("/api/auth/device-login", { method: "POST" });
         show(result);
+        createBtn.disabled = false;
         if (result.ok) {
           state.ticket = result.deviceLogin;
           qr.innerHTML = state.ticket.qrSvg;
           approveUrl.value = appendDeviceLoginReturnTo(state.ticket.approveURL);
-          ticketStatus.value = state.ticket.status;
+          setTicketStatus(state.ticket.status);
           pollBtn.disabled = false;
           openKbeamBtn.disabled = !state.ticket.approveURL;
           state.pollDelayMs = 2000;
           scheduleExpiry();
           startEvents();
+          flash("Ticket created. Scan the QR or open KBeam.");
         }
       });
 
@@ -388,23 +695,32 @@
         window.location.href = appendDeviceLoginReturnTo(state.ticket.approveURL);
       });
 
+      shareXBtn.addEventListener("click", () => {
+        const text = "Never log in again. Use KBeam. Wallet-signed auth for protected areas, with no passwords and no site secrets in the wallet.";
+        const url = new URL("https://twitter.com/intent/tweet");
+        url.searchParams.set("text", text);
+        url.searchParams.set("url", window.location.href);
+        window.open(url.toString(), "_blank", "noopener,noreferrer");
+      });
+
       logoutBtn.addEventListener("click", async () => {
         stopPolling();
         const result = await request("/api/auth/sessions/current", { method: "DELETE" });
         clearSessionNotice();
-        ticketStatus.value = state.ticket ? state.ticket.status : "idle";
+        setTicketStatus(state.ticket ? state.ticket.status : "idle");
         openKbeamBtn.disabled = true;
         show(result);
+        flash("Session cleared.");
       });
 
       window.addEventListener("focus", () => {
-        if (state.ticket && ticketStatus.value !== "approved" && ticketStatus.value !== "expired") {
+        if (state.ticket && ticketStatus.textContent !== "approved" && ticketStatus.textContent !== "expired") {
           pollTicket().catch(() => {});
         }
       });
 
       document.addEventListener("visibilitychange", () => {
-        if (!document.hidden && state.ticket && ticketStatus.value !== "approved" && ticketStatus.value !== "expired") {
+        if (!document.hidden && state.ticket && ticketStatus.textContent !== "approved" && ticketStatus.textContent !== "expired") {
           pollTicket().catch(() => {});
         }
       });
