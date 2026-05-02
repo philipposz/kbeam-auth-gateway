@@ -53,6 +53,9 @@
         gap: 10px;
         flex-wrap: wrap;
       }
+      .same-device-controls {
+        margin-top: 14px;
+      }
       button, a.button {
         appearance: none;
         border: 1px solid #2f6fed;
@@ -177,6 +180,9 @@
       <section>
         <div class="panel">
           <div id="qr">No login ticket yet.</div>
+          <div class="controls same-device-controls">
+            <button id="openKbeam" class="secondary" disabled>Open in KBeam</button>
+          </div>
           <label for="approveUrl">Approve URL</label>
           <input id="approveUrl" readonly>
           <label for="ticketStatus">Ticket status</label>
@@ -194,6 +200,7 @@
       const createBtn = document.querySelector("#create");
       const pollBtn = document.querySelector("#poll");
       const logoutBtn = document.querySelector("#logout");
+      const openKbeamBtn = document.querySelector("#openKbeam");
       const qr = document.querySelector("#qr");
       const approveUrl = document.querySelector("#approveUrl");
       const ticketStatus = document.querySelector("#ticketStatus");
@@ -235,6 +242,7 @@
 
       function showSession(session) {
         sessionNotice.hidden = false;
+        sessionNotice.classList.add("success");
         sessionAddress.textContent = session?.address
           ? `Wallet ${session.address} is signed in.`
           : "Session is active.";
@@ -253,6 +261,20 @@
         sessionNotice.classList.remove("success");
         sessionAddress.textContent = "QR expired. Create a new login ticket.";
         pollBtn.disabled = true;
+        openKbeamBtn.disabled = true;
+      }
+
+      function appendDeviceLoginReturnTo(approveURL) {
+        if (!approveURL) return "";
+        try {
+          const returnURL = new URL(window.location.href);
+          returnURL.hash = "";
+          const url = new URL(approveURL);
+          url.searchParams.set("returnTo", returnURL.toString());
+          return url.toString();
+        } catch {
+          return approveURL;
+        }
       }
 
       function scheduleExpiry() {
@@ -341,14 +363,16 @@
       createBtn.addEventListener("click", async () => {
         stopPolling();
         clearSessionNotice();
+        openKbeamBtn.disabled = true;
         const result = await request("/api/auth/device-login", { method: "POST" });
         show(result);
         if (result.ok) {
           state.ticket = result.deviceLogin;
           qr.innerHTML = state.ticket.qrSvg;
-          approveUrl.value = state.ticket.approveURL;
+          approveUrl.value = appendDeviceLoginReturnTo(state.ticket.approveURL);
           ticketStatus.value = state.ticket.status;
           pollBtn.disabled = false;
+          openKbeamBtn.disabled = !state.ticket.approveURL;
           state.pollDelayMs = 2000;
           scheduleExpiry();
           startEvents();
@@ -359,12 +383,30 @@
         pollTicket().catch((error) => show({ ok: false, error: String(error) }));
       });
 
+      openKbeamBtn.addEventListener("click", () => {
+        if (!state.ticket?.approveURL) return;
+        window.location.href = appendDeviceLoginReturnTo(state.ticket.approveURL);
+      });
+
       logoutBtn.addEventListener("click", async () => {
         stopPolling();
         const result = await request("/api/auth/sessions/current", { method: "DELETE" });
         clearSessionNotice();
         ticketStatus.value = state.ticket ? state.ticket.status : "idle";
+        openKbeamBtn.disabled = true;
         show(result);
+      });
+
+      window.addEventListener("focus", () => {
+        if (state.ticket && ticketStatus.value !== "approved" && ticketStatus.value !== "expired") {
+          pollTicket().catch(() => {});
+        }
+      });
+
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden && state.ticket && ticketStatus.value !== "approved" && ticketStatus.value !== "expired") {
+          pollTicket().catch(() => {});
+        }
       });
 
       refreshSession().catch(() => {});

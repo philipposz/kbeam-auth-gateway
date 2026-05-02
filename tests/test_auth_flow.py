@@ -155,6 +155,9 @@ def test_demo_page_is_served():
     assert "Login successful" in response.text
     assert "EventSource" in response.text
     assert "QR expired" in response.text
+    assert "Open in KBeam" in response.text
+    assert "appendDeviceLoginReturnTo" in response.text
+    assert "visibilitychange" in response.text
 
 
 def test_qr_svg_has_white_background_and_scan_get_page():

@@ -31,6 +31,7 @@ secrets, private hostnames, and internal infrastructure notes are out of scope.
 - [Deployment examples](docs/deployment-examples.md)
 - [Production hardening](docs/PRODUCTION_HARDENING_2026-05-02.md)
 - [KBeam app device-login fix](docs/KBEAM_APP_DEVICE_LOGIN_FIX_2026-05-02.md)
+- [Same-device demo login](docs/SAME_DEVICE_DEMO_LOGIN_2026-05-02.md)
 - [Security and secret hygiene](docs/SECURITY_AND_SECRET_HYGIENE.md)
 - [Rollback notes](docs/ROLLBACK.md)
 
@@ -75,6 +76,7 @@ address. `demo` mode is available only for local flow tests.
 - SSE ticket events with polling fallback in the demo
 - automatic QR expiry handling in the demo
 - KBeam-compatible `kbeam://pos-login` QR links with `webApproveURL` fallback
+- same-device demo login button with `returnTo`
 
 Admin examples:
 
