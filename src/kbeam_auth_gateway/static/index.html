@@ -377,6 +377,48 @@
         color: #aab5bd;
         line-height: 1.52;
       }
+      .trust-section {
+        margin-top: 22px;
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        border-radius: 24px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.058), rgba(255,255,255,0.03));
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(18px);
+        padding: clamp(22px, 4vw, 38px);
+      }
+      .trust-kicker {
+        display: inline-flex;
+        width: fit-content;
+        border: 1px solid rgba(66, 224, 196, 0.3);
+        border-radius: 999px;
+        padding: 7px 12px;
+        background: rgba(66, 224, 196, 0.09);
+        color: var(--mint);
+        font-size: 12px;
+        font-weight: 830;
+      }
+      .trust-section h2 {
+        max-width: 820px;
+        margin: 16px 0 12px;
+        font-size: clamp(30px, 4vw, 52px);
+        line-height: 1;
+      }
+      .trust-section p {
+        max-width: 920px;
+        margin: 0;
+        color: #acb7bf;
+        line-height: 1.62;
+      }
+      .trust-section p + p {
+        margin-top: 14px;
+      }
+      .trust-summary {
+        margin-top: 18px;
+        color: #f5f7f8;
+        font-size: clamp(20px, 2.5vw, 28px);
+        font-weight: 850;
+        line-height: 1.18;
+      }
       pre {
         max-height: 210px;
         overflow: auto;
@@ -593,6 +635,43 @@
             an allowlist, then put it in front of your own private area.
           </p>
           <pre id="log">{}</pre>
+        </div>
+      </section>
+
+      <section class="trust-section" aria-label="About KBeam Auth Gateway security and trust">
+        <span class="trust-kicker">Security and trust</span>
+        <h2>KBeam Auth Gateway</h2>
+        <p>
+          KBeam Auth Gateway lets websites and protected areas offer a KBeam
+          unlock instead of another password form. The website creates a
+          one-time login request, the user approves it with KBeam, the gateway
+          verifies the wallet signature, and the website can then create its
+          own secure session.
+        </p>
+        <p>
+          The security model is based on challenge-response authentication. A
+          login request is short-lived and tied to a specific challenge. No
+          password is transmitted, no password is stored, and no reusable login
+          secret has to be handed to the website. This reduces one of the
+          biggest risks of classic logins: central password databases and
+          reused credentials.
+        </p>
+        <p>
+          KBeam does not take control of the website. It does not know the
+          protected area, cannot see private pages, and does not manage the
+          user accounts of the application that embeds the gateway. Sessions,
+          roles, permissions, rate limits, audit logs, and access rules remain
+          under the control and responsibility of the website operator.
+        </p>
+        <p>
+          The gateway is not a magic security shield. Operators still need
+          HTTPS, secure session handling, sensible rate limits, monitoring,
+          wallet policies, and a careful server configuration. What it can do
+          is remove password handling from the login flow and replace it with a
+          verifiable, time-limited KBeam approval.
+        </p>
+        <div class="trust-summary">
+          KBeam unlocks access. The website keeps control.
         </div>
       </section>
     </main>
