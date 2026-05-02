@@ -28,30 +28,17 @@
         margin: 0;
         min-height: 100vh;
         background:
-          linear-gradient(135deg, rgba(66, 224, 196, 0.08) 0%, transparent 32%),
-          linear-gradient(225deg, rgba(66, 224, 196, 0.1) 0%, transparent 28%),
-          linear-gradient(180deg, #070b0d 0%, #0a1013 46%, #070b0d 100%);
+          radial-gradient(circle at 84% 22%, rgba(66, 224, 196, 0.12), transparent 28%),
+          radial-gradient(circle at 10% 76%, rgba(103, 167, 255, 0.12), transparent 30%),
+          linear-gradient(180deg, #090e10 0%, #070b0d 100%);
       }
       body::before {
         content: "";
         position: fixed;
         inset: 0;
         pointer-events: none;
-        opacity: 0.9;
-        background:
-          linear-gradient(180deg, rgba(255, 255, 255, 0.045) 0%, transparent 20%, rgba(255, 255, 255, 0.018) 100%),
-          linear-gradient(115deg, transparent 0%, rgba(66, 224, 196, 0.07) 42%, transparent 72%);
-        mask-image: linear-gradient(180deg, #000 0%, rgba(0, 0, 0, 0.78) 46%, transparent 100%);
-      }
-      body::after {
-        content: "";
-        position: fixed;
-        inset: 0;
-        pointer-events: none;
-        opacity: 0.32;
-        background:
-          linear-gradient(90deg, rgba(255, 255, 255, 0.06), transparent 18%, transparent 82%, rgba(66, 224, 196, 0.08)),
-          linear-gradient(180deg, transparent 0%, rgba(66, 224, 196, 0.04) 100%);
+        z-index: 0;
+        background: transparent;
       }
       button {
         appearance: none;
@@ -79,10 +66,39 @@
       }
       main {
         position: relative;
+        z-index: 1;
         width: min(1180px, calc(100vw - 32px));
         margin: 0 auto;
         padding: 14px 0 34px;
       }
+      .background-wallpaper {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        overflow: hidden;
+        pointer-events: none;
+      }
+      .floating-icon {
+        position: absolute;
+        color: var(--mint);
+        opacity: 0.07;
+        animation: floatIcon 10s ease-in-out infinite;
+      }
+      .floating-icon svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .floating-icon:nth-child(1) { left: 8%; top: 10%; width: 80px; height: 80px; animation-delay: 0s; }
+      .floating-icon:nth-child(2) { left: 20%; top: 35%; width: 60px; height: 72px; animation-delay: 1.2s; }
+      .floating-icon:nth-child(3) { left: 5%; top: 60%; width: 45px; height: 45px; animation-delay: 0.8s; }
+      .floating-icon:nth-child(4) { left: 15%; top: 80%; width: 55px; height: 55px; animation-delay: 2s; }
+      .floating-icon:nth-child(5) { left: 75%; top: 8%; width: 70px; height: 84px; animation-delay: 0.5s; }
+      .floating-icon:nth-child(6) { left: 88%; top: 30%; width: 50px; height: 50px; animation-delay: 1.5s; }
+      .floating-icon:nth-child(7) { left: 80%; top: 55%; width: 65px; height: 65px; animation-delay: 0.3s; }
+      .floating-icon:nth-child(8) { left: 90%; top: 78%; width: 55px; height: 66px; animation-delay: 1.8s; }
+      .floating-icon:nth-child(9) { left: 30%; top: 90%; width: 40px; height: 40px; animation-delay: 2.5s; }
+      .floating-icon:nth-child(10) { left: 65%; top: 85%; width: 50px; height: 50px; animation-delay: 1s; }
       .nav {
         display: flex;
         align-items: center;
@@ -395,6 +411,12 @@
         70% { box-shadow: 0 0 0 11px rgba(66, 224, 196, 0); }
         100% { box-shadow: 0 0 0 0 rgba(66, 224, 196, 0); }
       }
+      @keyframes floatIcon {
+        0% { transform: translateY(0) rotate(0deg); }
+        33% { transform: translateY(-15px) rotate(5deg); }
+        66% { transform: translateY(-8px) rotate(-5deg); }
+        100% { transform: translateY(0) rotate(0deg); }
+      }
       @media (max-width: 900px) {
         main {
           width: min(100% - 20px, 1180px);
@@ -440,6 +462,61 @@
     </style>
   </head>
   <body>
+    <div class="background-wallpaper" aria-hidden="true">
+      <span class="floating-icon">
+        <svg viewBox="0 0 100 100" fill="currentColor">
+          <path d="M50 0 C52 40, 60 48, 100 50 C60 52, 52 60, 50 100 C48 60, 40 52, 0 50 C40 48, 48 40, 50 0Z"></path>
+        </svg>
+      </span>
+      <span class="floating-icon">
+        <svg viewBox="0 0 100 120" fill="none" stroke="currentColor" stroke-width="10">
+          <path d="M50 5 L95 60 L50 115 L5 60Z"></path>
+        </svg>
+      </span>
+      <span class="floating-icon">
+        <svg viewBox="0 0 100 100" fill="currentColor">
+          <circle cx="50" cy="50" r="45"></circle>
+          <path d="M35 30 L35 70 M35 50 L60 30 M35 50 L60 70" stroke="hsl(210 20% 6%)" stroke-width="8" stroke-linecap="round" fill="none"></path>
+        </svg>
+      </span>
+      <span class="floating-icon">
+        <svg viewBox="0 0 100 100" fill="currentColor">
+          <path d="M50 0 C52 40, 60 48, 100 50 C60 52, 52 60, 50 100 C48 60, 40 52, 0 50 C40 48, 48 40, 50 0Z"></path>
+        </svg>
+      </span>
+      <span class="floating-icon">
+        <svg viewBox="0 0 100 120" fill="none" stroke="currentColor" stroke-width="10">
+          <path d="M50 5 L95 60 L50 115 L5 60Z"></path>
+        </svg>
+      </span>
+      <span class="floating-icon">
+        <svg viewBox="0 0 100 100" fill="currentColor">
+          <circle cx="50" cy="50" r="45"></circle>
+          <path d="M35 30 L35 70 M35 50 L60 30 M35 50 L60 70" stroke="hsl(210 20% 6%)" stroke-width="8" stroke-linecap="round" fill="none"></path>
+        </svg>
+      </span>
+      <span class="floating-icon">
+        <svg viewBox="0 0 100 100" fill="currentColor">
+          <path d="M50 0 C52 40, 60 48, 100 50 C60 52, 52 60, 50 100 C48 60, 40 52, 0 50 C40 48, 48 40, 50 0Z"></path>
+        </svg>
+      </span>
+      <span class="floating-icon">
+        <svg viewBox="0 0 100 120" fill="none" stroke="currentColor" stroke-width="10">
+          <path d="M50 5 L95 60 L50 115 L5 60Z"></path>
+        </svg>
+      </span>
+      <span class="floating-icon">
+        <svg viewBox="0 0 100 100" fill="currentColor">
+          <circle cx="50" cy="50" r="45"></circle>
+          <path d="M35 30 L35 70 M35 50 L60 30 M35 50 L60 70" stroke="hsl(210 20% 6%)" stroke-width="8" stroke-linecap="round" fill="none"></path>
+        </svg>
+      </span>
+      <span class="floating-icon">
+        <svg viewBox="0 0 100 100" fill="currentColor">
+          <path d="M50 0 C52 40, 60 48, 100 50 C60 52, 52 60, 50 100 C48 60, 40 52, 0 50 C40 48, 48 40, 50 0Z"></path>
+        </svg>
+      </span>
+    </div>
     <main>
       <nav class="nav" aria-label="Demo navigation">
         <div class="brand">
