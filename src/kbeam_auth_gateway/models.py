@@ -42,6 +42,7 @@ class ApproveResponse(BaseModel):
     session: dict
     challenge: dict
     signature: dict
+    auth: dict
 
 
 class SessionResponse(BaseModel):

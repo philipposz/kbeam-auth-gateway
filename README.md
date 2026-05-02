@@ -30,6 +30,7 @@ secrets, private hostnames, and internal infrastructure notes are out of scope.
 - [Nginx auth request integration](docs/nginx-auth-request.md)
 - [Deployment examples](docs/deployment-examples.md)
 - [Production hardening](docs/PRODUCTION_HARDENING_2026-05-02.md)
+- [KBeam app device-login fix](docs/KBEAM_APP_DEVICE_LOGIN_FIX_2026-05-02.md)
 - [Security and secret hygiene](docs/SECURITY_AND_SECRET_HYGIENE.md)
 - [Rollback notes](docs/ROLLBACK.md)
 
@@ -73,6 +74,7 @@ address. `demo` mode is available only for local flow tests.
 - maximum pending-ticket cap
 - SSE ticket events with polling fallback in the demo
 - automatic QR expiry handling in the demo
+- KBeam-compatible `kbeam://pos-login` QR links with `webApproveURL` fallback
 
 Admin examples:
 

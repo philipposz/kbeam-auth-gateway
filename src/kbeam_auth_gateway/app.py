@@ -6,7 +6,7 @@ import json
 from http import HTTPStatus
 from pathlib import Path
 from typing import Annotated
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlparse, urlencode
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
@@ -32,11 +32,43 @@ from .verifier import SignatureVerificationError, verify_signature
 STATIC_DIR = Path(__file__).parent / "static"
 
 
+def _api_base_url(settings: Settings) -> str:
+    return f"{settings.public_base_url}/api"
+
+
+def _kbeam_approve_url(settings: Settings, *, ticket_id: str, approve_token: str) -> str:
+    return "kbeam://pos-login?" + urlencode(
+        {
+            "t": ticket_id,
+            "a": approve_token,
+            "api": _api_base_url(settings),
+            "service": settings.service_slug,
+        }
+    )
+
+
+def _web_approve_url(ticket) -> str:
+    parsed = urlparse(ticket.approveURL)
+    if parsed.scheme in {"http", "https"}:
+        return ticket.approveURL
+    query = dict(parse_qsl(parsed.query))
+    api_base = query.get("api", "").rstrip("/")
+    base = api_base[:-4] if api_base.endswith("/api") else api_base
+    approve_token = query.get("a") or ticket.approveToken
+    if base:
+        return (
+            f"{base}/api/auth/device-login/{ticket.ticketId}/challenge?"
+            + urlencode({"approveToken": approve_token})
+        )
+    return ""
+
+
 def _public_ticket(ticket) -> dict:
     return {
         "ticketId": ticket.ticketId,
         "status": ticket.status,
         "approveURL": ticket.approveURL,
+        "webApproveURL": _web_approve_url(ticket),
         "qrSvg": ticket.qrSvg,
         "issuedAt": isoformat_utc(ticket.issuedAt),
         "expiresAt": isoformat_utc(ticket.expiresAt),
@@ -52,19 +84,21 @@ def _ticket_status_view(ticket) -> dict:
     }
 
 
-def _session_view(session) -> dict:
+def _session_view(session, *, organization_slug: str = "default") -> dict:
     return {
         "sessionId": session.sessionId,
         "address": session.address,
         "network": session.network,
+        "organizationSlug": organization_slug,
         "publicKey": session.publicKey,
         "issuedAt": isoformat_utc(session.issuedAt),
         "expiresAt": isoformat_utc(session.expiresAt),
+        "lastSeenAt": isoformat_utc(utc_now()),
         "challengeId": session.challengeId,
     }
 
 
-def _challenge_view(challenge) -> dict:
+def _challenge_view(challenge, *, organization_slug: str = "default") -> dict:
     return {
         "challengeId": challenge.challengeId,
         "address": challenge.address,
@@ -74,6 +108,7 @@ def _challenge_view(challenge) -> dict:
         "expiresAt": isoformat_utc(challenge.expiresAt),
         "origin": challenge.origin,
         "message": challenge.message,
+        "organizationSlug": organization_slug,
     }
 
 
@@ -288,9 +323,10 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
         ticket_id = new_id("ticket")
         poll_token = new_token()
         approve_token = new_token()
-        approve_url = (
-            f"{settings.public_base_url}/api/auth/device-login/{ticket_id}/challenge?"
-            + urlencode({"approveToken": approve_token})
+        approve_url = _kbeam_approve_url(
+            settings,
+            ticket_id=ticket_id,
+            approve_token=approve_token,
         )
         ticket = TicketRecord(
             ticketId=ticket_id,
@@ -335,7 +371,7 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
                     samesite="lax",
                     domain=settings.cookie_domain or None,
                 )
-                payload["session"] = _session_view(session)
+                payload["session"] = _session_view(session, organization_slug=settings.service_slug)
         return payload
 
     @app.get("/api/auth/device-login/{ticket_id}/events")
@@ -368,7 +404,7 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
                 if current.status == "approved" and current.sessionId:
                     session = store.get_session(current.sessionId)
                     if session:
-                        payload["session"] = _session_view(session)
+                        payload["session"] = _session_view(session, organization_slug=settings.service_slug)
                 if current.status != last_status:
                     yield f"event: status\ndata: {json.dumps(payload)}\n\n"
                     last_status = current.status
@@ -457,7 +493,7 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
 
         return {
             "ok": True,
-            "challenge": _challenge_view(challenge),
+            "challenge": _challenge_view(challenge, organization_slug=settings.service_slug),
             "deviceLogin": _public_ticket(ticket),
         }
 
@@ -532,9 +568,14 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
         return {
             "ok": True,
             "deviceLogin": _public_ticket(ticket),
-            "session": _session_view(session),
-            "challenge": _challenge_view(challenge),
+            "session": _session_view(session, organization_slug=settings.service_slug),
+            "challenge": _challenge_view(challenge, organization_slug=settings.service_slug),
             "signature": signature_verification.as_public_dict(),
+            "auth": {
+                "mode": "wallet_signature",
+                "runtimeActive": True,
+                "sessionRuntimeActive": True,
+            },
         }
 
     def current_session_id(request: Request) -> str | None:
@@ -549,7 +590,7 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
         session = store.get_session(session_id)
         if not session:
             raise _error(HTTPStatus.UNAUTHORIZED, "auth_session_required")
-        return {"ok": True, "session": _session_view(session)}
+        return {"ok": True, "session": _session_view(session, organization_slug=settings.service_slug)}
 
     @app.get("/api/auth/validate", status_code=HTTPStatus.NO_CONTENT)
     def validate_session(request: Request):

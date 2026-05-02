@@ -92,6 +92,9 @@ def test_device_login_flow_sets_and_validates_session_cookie():
     assert created.status_code == 201
     ticket = created.json()["deviceLogin"]
     assert ticket["status"] == "pending"
+    assert ticket["approveURL"].startswith("kbeam://pos-login?")
+    assert "api=https%3A%2F%2Fauth.example.com%2Fapi" in ticket["approveURL"]
+    assert ticket["webApproveURL"].startswith("https://auth.example.com/api/auth/device-login/")
     assert ticket["qrSvg"].startswith("<?xml")
 
     challenge_response = client.post(
@@ -107,6 +110,7 @@ def test_device_login_flow_sets_and_validates_session_cookie():
     assert "Protocol: kbeam-auth-v1" in challenge["message"]
     assert "Service: test-service" in challenge["message"]
     assert "Origin: https://protected.example.com" in challenge["message"]
+    assert challenge["organizationSlug"] == "test-service"
 
     approve_response = client.post(
         f"/api/auth/device-login/{ticket['ticketId']}/approve",
@@ -118,7 +122,11 @@ def test_device_login_flow_sets_and_validates_session_cookie():
         },
     )
     assert approve_response.status_code == 200
-    assert approve_response.json()["signature"]["verifier"] == "native"
+    approved_payload = approve_response.json()
+    assert approved_payload["signature"]["verifier"] == "native"
+    assert approved_payload["session"]["organizationSlug"] == "test-service"
+    assert approved_payload["session"]["lastSeenAt"]
+    assert approved_payload["auth"]["sessionRuntimeActive"] is True
 
     poll_response = client.get(
         f"/api/auth/device-login/{ticket['ticketId']}",
@@ -157,7 +165,7 @@ def test_qr_svg_has_white_background_and_scan_get_page():
     ticket = client.post("/api/auth/device-login").json()["deviceLogin"]
     assert 'fill="#ffffff"' in ticket["qrSvg"]
 
-    response = client.get(ticket["approveURL"].replace("https://auth.example.com", ""))
+    response = client.get(ticket["webApproveURL"].replace("https://auth.example.com", ""))
 
     assert response.status_code == 200
     assert "KBeam Login Request" in response.text
