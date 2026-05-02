@@ -23,7 +23,8 @@ KBeam can use that value to return to the browser after the wallet approval.
   immediately. This covers mobile browsers that pause SSE while KBeam is in the
   foreground.
 - The redesigned demo keeps a large visible success state so a returned browser
-  clearly shows that the protected area was unlocked.
+  clearly shows that the protected area was unlocked. After approval, this
+  success state replaces the QR code instead of appearing below it.
 - The success state includes a local logout button for clearing the demo
   session after testing.
 - Long wallet addresses in the success state are rendered as a wrapped inline

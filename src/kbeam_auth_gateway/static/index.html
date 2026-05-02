@@ -265,6 +265,17 @@
         text-align: center;
         font-weight: 780;
       }
+      #qr.approved {
+        place-items: stretch;
+        text-align: left;
+        background:
+          linear-gradient(135deg, rgba(66, 224, 196, 0.2), rgba(103, 167, 255, 0.08)),
+          rgba(0, 0, 0, 0.22);
+      }
+      #qr.expired {
+        place-items: stretch;
+        text-align: left;
+      }
       #qr svg {
         width: min(100%, 315px);
         height: auto;
@@ -272,6 +283,11 @@
         border: 14px solid #ffffff;
         border-radius: 18px;
         box-shadow: 0 22px 48px rgba(0, 0, 0, 0.34);
+      }
+      #qr .success-stage {
+        width: 100%;
+        margin: 0;
+        align-self: stretch;
       }
       label {
         display: block;
@@ -469,13 +485,6 @@
           </div>
           <div class="qr-zone">
             <div id="qr">Start a wallet login to create a live KBeam QR.</div>
-            <div id="sessionNotice" class="success-stage" hidden>
-              <strong>Success. Protected area unlocked.</strong>
-              <span id="sessionAddress"></span>
-              <div class="success-actions">
-                <button id="logoutSuccess" class="secondary">Logout</button>
-              </div>
-            </div>
             <label for="approveUrl">KBeam link with returnTo</label>
             <input id="approveUrl" readonly>
           </div>
@@ -508,14 +517,11 @@
       const state = { ticket: null, pollTimer: null, expiryTimer: null, eventSource: null, pollDelayMs: 2000 };
       const createBtn = document.querySelector("#create");
       const logoutBtn = document.querySelector("#logout");
-      const logoutSuccessBtn = document.querySelector("#logoutSuccess");
       const openKbeamBtn = document.querySelector("#openKbeam");
       const shareXBtn = document.querySelector("#shareX");
       const qr = document.querySelector("#qr");
       const approveUrl = document.querySelector("#approveUrl");
       const ticketStatus = document.querySelector("#ticketStatus");
-      const sessionNotice = document.querySelector("#sessionNotice");
-      const sessionAddress = document.querySelector("#sessionAddress");
       const liveStatus = document.querySelector("#liveStatus");
       const toast = document.querySelector("#toast");
       const log = document.querySelector("#log");
@@ -565,32 +571,70 @@
         liveStatus.textContent = status === "approved" ? "Wallet session active" : `Ticket ${status}`;
       }
 
-      function showSession(session) {
-        sessionNotice.hidden = false;
-        sessionAddress.textContent = "";
-        if (session?.address) {
+      function renderQrMessage({ title, message, address = "", action = false, statusClass = "" }) {
+        qr.classList.remove("approved", "expired");
+        if (statusClass) {
+          qr.classList.add(statusClass);
+        }
+        qr.innerHTML = "";
+        const stage = document.createElement("div");
+        stage.className = "success-stage";
+
+        const titleNode = document.createElement("strong");
+        titleNode.textContent = title;
+        stage.append(titleNode);
+
+        const messageNode = document.createElement("span");
+        if (address) {
           const addressNode = document.createElement("code");
           addressNode.className = "wallet-address";
-          addressNode.textContent = session.address;
-          sessionAddress.append("Wallet ", addressNode, " is signed in. ");
-          sessionAddress.append("This browser now has its own secure session.");
+          addressNode.textContent = address;
+          messageNode.append("Wallet ", addressNode, " is signed in. ");
+          messageNode.append(message);
         } else {
-          sessionAddress.textContent = "This browser now has its own secure session.";
+          messageNode.textContent = message;
         }
+        stage.append(messageNode);
+
+        if (action) {
+          const actions = document.createElement("div");
+          actions.className = "success-actions";
+          const button = document.createElement("button");
+          button.id = "logoutSuccess";
+          button.className = "secondary";
+          button.type = "button";
+          button.textContent = "Logout";
+          actions.append(button);
+          stage.append(actions);
+        }
+
+        qr.append(stage);
+      }
+
+      function showSession(session) {
+        renderQrMessage({
+          title: "Success. Protected area unlocked.",
+          message: "This browser now has its own secure session.",
+          address: session?.address || "",
+          action: true,
+          statusClass: "approved",
+        });
         setTicketStatus("approved");
         flash("KBeam login approved.");
       }
 
       function clearSessionNotice() {
-        sessionNotice.hidden = true;
-        sessionAddress.textContent = "";
+        qr.classList.remove("approved", "expired");
       }
 
       function showExpired() {
         stopPolling();
         setTicketStatus("expired");
-        sessionNotice.hidden = false;
-        sessionAddress.textContent = "Ticket expired. Start a new wallet login.";
+        renderQrMessage({
+          title: "Ticket expired.",
+          message: "Start a new wallet login.",
+          statusClass: "expired",
+        });
         openKbeamBtn.disabled = true;
       }
 
@@ -702,6 +746,7 @@
         createBtn.disabled = false;
         if (result.ok) {
           state.ticket = result.deviceLogin;
+          qr.classList.remove("approved", "expired");
           qr.innerHTML = state.ticket.qrSvg;
           approveUrl.value = appendDeviceLoginReturnTo(state.ticket.approveURL);
           setTicketStatus(state.ticket.status);
@@ -730,14 +775,21 @@
         stopPolling();
         const result = await request("/api/auth/sessions/current", { method: "DELETE" });
         clearSessionNotice();
-        setTicketStatus(state.ticket ? state.ticket.status : "idle");
+        state.ticket = null;
+        approveUrl.value = "";
+        setTicketStatus("idle");
         openKbeamBtn.disabled = true;
         show(result);
         flash("Session cleared.");
+        startDeviceLogin({ silent: true }).catch((error) => show({ ok: false, error: String(error) }));
       }
 
       logoutBtn.addEventListener("click", logoutSession);
-      logoutSuccessBtn.addEventListener("click", logoutSession);
+      qr.addEventListener("click", (event) => {
+        if (event.target instanceof HTMLElement && event.target.closest("#logoutSuccess")) {
+          logoutSession();
+        }
+      });
 
       window.addEventListener("focus", () => {
         if (state.ticket && ticketStatus.textContent !== "approved" && ticketStatus.textContent !== "expired") {

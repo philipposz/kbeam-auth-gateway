@@ -9,6 +9,12 @@ The core idea is simple: never build another password login. A protected site ca
 let KBeam approve a short-lived challenge, while the site keeps its own session,
 permissions, data, and private routes.
 
+KBeam Auth Gateway is a source-available KBeam/Kaspa wallet authentication
+gateway for websites and protected areas. It is comparable in spirit to
+SIWE/Web3 wallet login, but built for KBeam-compatible Kaspa wallet login flows
+with QR, same-device app return, server-side sessions, and self-hosted access
+control.
+
 ## Goal
 
 The gateway owns authentication only:
