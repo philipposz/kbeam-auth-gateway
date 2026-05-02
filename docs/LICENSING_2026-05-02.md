@@ -47,15 +47,27 @@ working KBeam-compatible login path.
 
 ## Licensor Data Source
 
-The license holder data follows the neighboring KBeam repository:
+The public gateway repository must be understandable without access to the
+private KBeam repository. For that reason, the relevant licensor data has been
+copied into `NOTICE`.
+
+The source records in the private KBeam repository state:
 
 - The KBeam repository license identifies Philippos Zachiridis as copyright
   holder for KBeam additions, branding, and current product work.
-- The KBeam legal pages identify the public KBeam legal contact details.
+- The KBeam legal pages identify the responsible provider as:
 
-For this public gateway repository, the committed notice uses only the legal
-name and public contact email. It does not duplicate personal address or phone
-details into this repository.
+```text
+Philippos Zachiridis
+Vivaldistr. 4
+72124 Pliezhausen
+Germany
+Phone: +49 151 23030931
+Email: support@kbeam.app
+```
+
+These details are included so users of this public repository do not need
+access to the private KBeam repository to identify the licensor.
 
 ## Rollback
 
