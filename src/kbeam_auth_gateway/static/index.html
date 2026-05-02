@@ -128,6 +128,31 @@
         align-items: center;
         gap: 10px;
       }
+      .nav-link {
+        min-height: 38px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 999px;
+        padding: 8px 12px;
+        background: rgba(255, 255, 255, 0.05);
+        color: #eef5f4;
+        font-size: 13px;
+        font-weight: 820;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      .nav-link:hover {
+        border-color: rgba(66, 224, 196, 0.34);
+        background: rgba(66, 224, 196, 0.1);
+      }
+      .nav-link svg {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+      }
       .status-strip {
         display: inline-flex;
         align-items: center;
@@ -487,6 +512,10 @@
           flex-direction: column;
           padding-bottom: 8px;
         }
+        .nav-actions {
+          width: 100%;
+          flex-wrap: wrap;
+        }
         .proof-row {
           grid-template-columns: 1fr;
         }
@@ -566,6 +595,20 @@
           <span>KBeam Auth Gateway Demo</span>
         </div>
         <div class="nav-actions">
+          <a class="nav-link" href="https://github.com/philipposz/kbeam-auth-gateway" target="_blank" rel="noopener noreferrer" aria-label="Open KBeam Auth Gateway on GitHub">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 2C6.48 2 2 6.59 2 12.25c0 4.52 2.87 8.35 6.84 9.71.5.09.68-.22.68-.49 0-.24-.01-1.05-.01-1.91-2.78.62-3.37-1.22-3.37-1.22-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.36 1.12 2.94.85.09-.67.35-1.12.63-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.32 9.32 0 0 1 12 6.94c.85 0 1.71.12 2.51.34 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.07.36.32.68.94.68 1.9 0 1.38-.01 2.49-.01 2.82 0 .27.18.59.69.49A10.12 10.12 0 0 0 22 12.25C22 6.59 17.52 2 12 2Z"></path>
+            </svg>
+            GitHub
+          </a>
+          <a class="nav-link" href="https://testflight.apple.com/join/b7dkeJxz" target="_blank" rel="noopener noreferrer" aria-label="Open KBeam on TestFlight">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 3.5c2.15 2.02 3.61 4.95 3.61 8.31 0 3.41-1.5 6.38-3.61 8.69-2.11-2.31-3.61-5.28-3.61-8.69 0-3.36 1.46-6.29 3.61-8.31Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"></path>
+              <path d="M7.38 8.05 4.2 11.2c-.29.29-.29.77 0 1.06l3.18 3.14M16.62 8.05l3.18 3.15c.29.29.29.77 0 1.06l-3.18 3.14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+              <path d="M12 8.9v5.9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+            </svg>
+            TestFlight
+          </a>
           <button id="shareX" class="secondary">Share on X</button>
           <div class="status-strip">
             <span class="pulse"></span>
