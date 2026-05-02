@@ -72,8 +72,27 @@ If You distribute the Software or a modified version of it, You must include:
 
 - this license
 - the copyright notice above
+- the NOTICE file or an equivalent notice that preserves the KBeam name,
+  Licensor name, Licensor contact details, license name, and compatibility
+  identity
 - a clear notice that the software is based on KBeam Auth Gateway, if the
   distributed version contains substantial portions of the Software
+
+You must preserve these notices in every fork, derivative work, modified
+version, redistributed copy, hosted source release, and substantial
+continuation based on the Software.
+
+You must not remove or rename references to KBeam, Licensor, the license name,
+or the Protected Compatibility Identifiers where those references are needed to
+identify the origin, license terms, or compatibility requirements of the
+Software.
+
+If You create a modified version, fork, continuation, or derivative work, You
+may add Your own notices, authorship statements, product names, and license
+notices for Your original additions, but You must keep the KBeam Auth Gateway
+license notice, Licensor attribution, and Protected Compatibility Identifiers
+intact and visible in the license or notice materials distributed with that
+work.
 
 If You modify the Software, You must not state or imply that Your modified
 version is an official KBeam release unless Licensor has separately authorized

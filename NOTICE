@@ -19,6 +19,19 @@ KBeam Auth Gateway is designed to preserve compatibility with the KBeam wallet
 application. The KBeam-compatible login flow must remain available in forks,
 deployments, and derivative versions that include this gateway's login flow.
 
+Required preservation:
+Forks, derivative works, modified versions, redistributed copies, hosted source
+releases, and substantial continuations based on KBeam Auth Gateway must keep
+the KBeam name, Licensor attribution, license name, this compatibility notice,
+and the protected compatibility identifiers visible in their license or notice
+materials.
+
+Protected compatibility identifiers:
+- KBeam login
+- kbeam-auth-v1
+- kbeam://pos-login
+- KBEAM/kbeam auth identifiers used to preserve KBeam auth compatibility
+
 Brand reservation:
 The KBeam name, logo, icons, visual identity, and other brand assets are
 reserved. They may be used only for accurate compatibility references and for

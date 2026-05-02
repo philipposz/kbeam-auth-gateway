@@ -45,6 +45,21 @@ Integrators may add other login methods, wallet providers, policies, routes, UI,
 storage systems, and authorization rules. They may not remove or break the
 working KBeam-compatible login path.
 
+## Preservation Requirement
+
+Forks, derivative works, modified versions, redistributed copies, hosted source
+releases, and substantial continuations based on this gateway must preserve:
+
+- the `KBeam` name as the origin and compatibility identity
+- the Licensor attribution and contact details from `NOTICE`
+- the license name
+- the protected compatibility identifiers listed above
+- the statement that KBeam-compatible login must remain available
+
+Integrators may add their own attribution, product names, notices, and license
+terms for their original additions, but those additions must not remove or hide
+the KBeam Auth Gateway license notice or compatibility requirement.
+
 ## Licensor Data Source
 
 The public gateway repository must be understandable without access to the
