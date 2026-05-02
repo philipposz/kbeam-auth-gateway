@@ -1,0 +1,47 @@
+# FastAPI Runtime Foundation 2026-05-02
+
+The first runtime implementation uses Python with FastAPI.
+
+## Reasoning
+
+The existing POS server is Python but uses `BaseHTTPRequestHandler` and manual
+path routing. The standalone auth gateway should be easier to test, document,
+and publish, so the HTTP layer starts fresh with FastAPI while the ticket,
+challenge, and session flow stays aligned with the existing product behavior.
+
+## Initial Runtime Scope
+
+Implemented foundation:
+
+- `GET /health`
+- `GET /api/health`
+- `POST /api/auth/device-login`
+- `GET /api/auth/device-login/{ticketId}`
+- `POST /api/auth/device-login/{ticketId}/challenge`
+- `POST /api/auth/device-login/{ticketId}/approve`
+- `GET /api/auth/session`
+- `GET /api/auth/validate`
+- `DELETE /api/auth/sessions/current`
+
+The first store is in-memory and intended only for local demo and protocol
+tests. Signature verification currently has a `demo` mode so the flow can be
+tested without embedding production wallet or verifier details.
+
+## Rollback
+
+This change is additive. To roll back the runtime foundation before the first
+commit, remove:
+
+- `pyproject.toml`
+- `.env.example`
+- `src/`
+- `tests/`
+- this document
+
+No deployment state is affected.
+
+## Next Step
+
+Replace demo signature verification with the public verifier contract and add
+byte-stability tests for `kbeam-auth-v1` challenge messages.
+

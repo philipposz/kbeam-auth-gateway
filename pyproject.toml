@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kbeam-auth-gateway"
+version = "0.1.0"
+description = "Standalone KBeam wallet authentication gateway"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "LicenseRef-Proprietary-Until-Public-Release" }
+dependencies = [
+  "fastapi>=0.115,<1",
+  "pydantic>=2,<3",
+  "qrcode>=8,<9",
+  "uvicorn[standard]>=0.34,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.28,<1",
+  "pytest>=8,<9",
+  "ruff>=0.11,<1",
+]
+
+[project.scripts]
+kbeam-auth-gateway = "kbeam_auth_gateway.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kbeam_auth_gateway"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
