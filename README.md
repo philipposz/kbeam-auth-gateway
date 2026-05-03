@@ -42,6 +42,7 @@ secrets, private hostnames, and internal infrastructure notes are out of scope.
 
 - [Public gateway plan](docs/PUBLIC_KBEAM_AUTH_GATEWAY_PLAN_2026-05-02.md)
 - [Protocol v1](docs/protocol-v1.md)
+- [KBeam compatibility specification](KBEAM-COMPATIBILITY.md)
 - [Public login transparency](docs/PUBLIC_LOGIN_TRANSPARENCY_2026-05-02.md)
 - [Native signature verifier](docs/native-signature-verifier.md)
 - [Nginx auth request integration](docs/nginx-auth-request.md)
@@ -61,7 +62,7 @@ generic deployment examples.
 ## License
 
 This project uses the
-`KBeam Auth Gateway Source Available Compatibility License 1.0`.
+`KBeam Auth Gateway Source Available Compatibility License 1.1`.
 
 You may use, host, integrate, modify, and distribute the gateway, including for
 commercial protected areas. The required condition is that the KBeam-compatible
@@ -69,9 +70,10 @@ login path remains working in forks, deployments, and derivative versions that
 include this gateway's login flow.
 
 This is a source-available license with a compatibility requirement, not an
-OSI-approved open source license. See [LICENSE](LICENSE), [NOTICE](NOTICE), and
-[Licensing notes](docs/LICENSING_2026-05-02.md). KBeam brand usage is covered
-by [TRADEMARKS.md](TRADEMARKS.md).
+OSI-approved open source license. See [LICENSE](LICENSE), [NOTICE](NOTICE),
+[KBEAM-COMPATIBILITY.md](KBEAM-COMPATIBILITY.md), and
+[Licensing notes](docs/LICENSING_2026-05-02.md). KBeam brand usage is covered by
+[TRADEMARKS.md](TRADEMARKS.md).
 
 ## Local Development
 

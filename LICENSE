@@ -1,4 +1,6 @@
-KBeam Auth Gateway Source Available Compatibility License 1.0
+KBeam Auth Gateway Source Available Compatibility License 1.1
+
+Version 1.1 - 3 May 2026
 
 Copyright (c) 2026 Philippos Zachiridis
 
@@ -24,6 +26,14 @@ or distributing the Software.
 allows a waiting website or protected application to be unlocked by the KBeam
 wallet application through the KBeam auth protocol.
 
+"KBeam Compatibility Specification" means the versioned technical compatibility
+document distributed with this Software as KBEAM-COMPATIBILITY.md, or a clear
+successor document distributed with a later version of the Software. A copy,
+fork, deployment, modified version, derivative work, hosted source release, or
+substantial continuation is governed by the compatibility specification
+included with the version it uses, unless Licensor separately authorizes
+different compatibility terms in writing.
+
 "Protected Compatibility Identifiers" means the identifiers required for
 KBeam-Compatible Login, including:
 
@@ -31,20 +41,23 @@ KBeam-Compatible Login, including:
 - the protocol identifier "kbeam-auth-v1"
 - the KBeam app URI scheme "kbeam://", including login routes under that
   scheme
-- the KBeam auth configuration and integration identifiers that begin with
-  "KBEAM" or "kbeam" and are used to preserve KBeam auth compatibility
+- KBeam auth configuration and integration identifiers beginning with
+  "KBEAM" or "kbeam" when they are used to preserve KBeam auth compatibility
+- any additional protected identifiers listed in the KBeam Compatibility
+  Specification distributed with this Software
 
-"Minimum Compatibility Requirements" means that a copy, fork, deployment,
-modified version, derivative work, or substantial continuation that includes or
-is based on the KBeam-Compatible Login flow must continue to provide all of the
-following:
+"Minimum Compatibility Requirements" means that any copy, fork, deployment,
+modified version, derivative work, hosted source release, or substantial
+continuation that includes or is based on the KBeam-Compatible Login flow must
+maintain a fully functional KBeam-Compatible Login path. At minimum, that path
+must provide:
 
 - a login challenge whose first line is "KBeam login"
-- the protocol identifier "kbeam-auth-v1"
+- support for the protocol identifier "kbeam-auth-v1"
 - an app approval URI compatible with the "kbeam://" scheme
-- a challenge creation path that allows the KBeam wallet application to obtain
-  the login challenge for a pending ticket
-- an approval path that accepts a KBeam wallet signature for that challenge
+- challenge creation that allows the KBeam wallet application to obtain the
+  login challenge for a pending ticket
+- approval handling that accepts a KBeam wallet signature for that challenge
 - a waiting-browser status path, such as polling, SSE, or an equivalent event
   mechanism, that lets the protected website learn that the KBeam approval
   succeeded
@@ -55,13 +68,15 @@ following:
   deployment or redistribution
 - license or notice materials that preserve the Protected Compatibility
   Identifiers and state that KBeam-compatible login must remain available
+- compliance with the KBeam Compatibility Specification distributed with this
+  Software
 
 2. License Grant
 
 Subject to this license, Licensor grants You a worldwide, royalty-free,
-non-exclusive license to:
+non-exclusive license, perpetual unless terminated under this license, to:
 
-- use, run, and host the Software
+- use, run, host, and execute the Software
 - copy the Software
 - modify the Software
 - integrate the Software into websites, services, protected areas, internal
@@ -71,25 +86,22 @@ non-exclusive license to:
 
 3. Mandatory KBeam Compatibility
 
-You may modify, extend, brand, configure, or integrate the Software, but every
-copy, fork, hosted deployment, and derivative version that includes or is based
-on the KBeam-Compatible Login flow must preserve a working KBeam-Compatible
-Login path.
+You may modify, extend, rebrand, configure, or integrate the Software, but
+every copy, fork, hosted deployment, modified version, derivative work,
+redistributed copy, hosted source release, and substantial continuation that
+includes or is based on the KBeam-Compatible Login flow must preserve a working
+KBeam-Compatible Login path and satisfy the Minimum Compatibility Requirements.
 
 You must not remove, rename, disable, obscure, break, or make non-functional
-the KBeam-Compatible Login flow or the Protected Compatibility Identifiers.
-
-You must satisfy the Minimum Compatibility Requirements in every copy, fork,
-hosted deployment, modified version, derivative work, redistributed copy,
-hosted source release, and substantial continuation that includes or is based
-on the KBeam-Compatible Login flow, even if You rename the project, reorganize
-the code, change the API surface, change the UI, change the storage layer, or
-add other login methods.
+the KBeam-Compatible Login flow, the Protected Compatibility Identifiers, or
+the technical compatibility requirements described in the KBeam Compatibility
+Specification.
 
 You may add other login methods, wallet providers, access policies, user
-systems, payment flows, or application-specific authorization layers, provided
-that the KBeam-Compatible Login flow remains available and interoperable with
-the KBeam wallet application.
+systems, payment flows, application-specific authorization layers, routes,
+storage systems, deployment topologies, or user interfaces, provided that the
+KBeam-Compatible Login flow remains available and interoperable with the KBeam
+wallet application.
 
 If You change implementation details, APIs, routes, deployment topology,
 storage, frontend UI, or session handling, You are responsible for ensuring
@@ -107,12 +119,12 @@ approval, waiting-browser status updates, session handoff, or protected-area
 unlock behavior.
 
 If You discover that the KBeam-Compatible Login flow is broken in Your public
-deployment, redistributed version, fork, derivative work, or substantial
-continuation, You must make commercially reasonable efforts to repair it,
-disable the broken public release until repaired, or clearly withdraw the
-affected KBeam-compatible login claim. You may not knowingly distribute or
-operate a version that claims KBeam compatibility while the KBeam-Compatible
-Login flow is non-functional.
+deployment, redistributed version, fork, derivative work, hosted source
+release, or substantial continuation, You must make commercially reasonable
+efforts to repair it, disable the broken public release until repaired, or
+clearly withdraw the affected KBeam-compatible login claim. You may not
+knowingly distribute or operate a version that claims KBeam compatibility while
+the KBeam-Compatible Login flow is non-functional.
 
 4. Notices and Attribution
 
@@ -121,9 +133,11 @@ If You distribute the Software or a modified version of it, You must include:
 - this license
 - the copyright notice above
 - the NOTICE file or an equivalent notice that, at minimum, preserves the
-  KBeam name, Licensor name, Licensor contact details, license name,
-  Protected Compatibility Identifiers, Minimum Compatibility Requirements, and
-  statement that KBeam-compatible login must remain available
+  KBeam name, Licensor name, Licensor contact details, license name, Protected
+  Compatibility Identifiers, Minimum Compatibility Requirements, and statement
+  that KBeam-compatible login must remain available
+- the KBeam Compatibility Specification or an equivalent technical notice that
+  preserves the KBeam compatibility requirements
 - a clear notice that the software is based on KBeam Auth Gateway, if the
   distributed version contains substantial portions of the Software or uses the
   KBeam-Compatible Login flow
@@ -132,20 +146,21 @@ You must preserve these notices in every fork, derivative work, modified
 version, redistributed copy, hosted source release, and substantial
 continuation based on the Software.
 
+You may add Your own copyright notices, authorship statements, product names,
+license notices, and license terms for Your original additions and new modules.
+Your original additions and new modules may be licensed under separate terms,
+provided that those terms do not remove, contradict, hide, disable, or override
+the KBeam Auth Gateway license notice, Licensor attribution, Protected
+Compatibility Identifiers, KBeam Compatibility Specification, or Mandatory
+KBeam Compatibility obligations.
+
 You must not remove or rename references to KBeam, Licensor, the license name,
 or the Protected Compatibility Identifiers where those references are needed to
 identify the origin, license terms, or compatibility requirements of the
 Software.
 
-If You create a modified version, fork, continuation, or derivative work, You
-may add Your own notices, authorship statements, product names, and license
-notices for Your original additions, but You must keep the KBeam Auth Gateway
-license notice, Licensor attribution, and Protected Compatibility Identifiers
-intact and visible in the license or notice materials distributed with that
-work.
-
-If You operate a publicly accessible hosted deployment based on the Software
-or on the KBeam-Compatible Login flow, You must make the license name, Licensor
+If You operate a publicly accessible hosted deployment based on the Software or
+on the KBeam-Compatible Login flow, You must make the license name, Licensor
 attribution, compatibility notice, and Protected Compatibility Identifiers
 reasonably accessible to operators or users of that deployment, for example in
 a legal page, about page, documentation page, source repository, admin
@@ -191,8 +206,8 @@ unless that is agreed separately in writing.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE, SECURITY, AVAILABILITY, NON-INFRINGEMENT,
-OR COMPATIBILITY WITH ANY PARTICULAR SYSTEM.
+FITNESS FOR A PARTICULAR PURPOSE, SECURITY, AVAILABILITY, NON-INFRINGEMENT, OR
+COMPATIBILITY WITH ANY PARTICULAR SYSTEM.
 
 8. Limitation of Liability
 
@@ -217,7 +232,18 @@ becoming aware of it, Your rights are reinstated from the date of cure. A
 repeated or intentional violation of the Mandatory KBeam Compatibility section
 does not have to be accepted as cured by Licensor.
 
-11. Governing Law
+11. General Provisions
 
-Unless mandatory law requires otherwise, this license is governed by the laws
-of the Federal Republic of Germany, excluding conflict-of-law rules.
+Severability: If any provision of this license is held invalid or
+unenforceable, the remaining provisions remain in full force and effect.
+
+Entire Agreement: This license, together with the NOTICE file and KBeam
+Compatibility Specification distributed with this Software, states the license
+terms for the Software.
+
+No Waiver: Failure to enforce any provision of this license does not waive the
+right to enforce that provision or any other provision later.
+
+Governing Law: Unless mandatory law requires otherwise, this license is
+governed by the laws of the Federal Republic of Germany, excluding
+conflict-of-law rules.

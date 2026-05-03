@@ -3,12 +3,16 @@
 ## Summary
 
 KBeam Auth Gateway is licensed under the `KBeam Auth Gateway Source Available
-Compatibility License 1.0`.
+Compatibility License 1.1`.
 
 The license allows users to use, host, integrate, modify, and distribute the
 gateway, including in commercial and non-commercial protected areas. The central
 condition is that the KBeam-compatible login path must remain working wherever
 the gateway's login flow is used.
+
+The technical compatibility requirements are kept outside the license text in
+`KBEAM-COMPATIBILITY.md`. This keeps the license easier to read while preserving
+the exact login identifiers and flow requirements needed for KBeam compatibility.
 
 ## Why This Is Source Available
 
@@ -21,7 +25,7 @@ unlock path available.
 For package metadata, the project uses the custom SPDX-style identifier:
 
 ```text
-LicenseRef-KBeam-Auth-Gateway-1.0
+LicenseRef-KBeam-Auth-Gateway-1.1
 ```
 
 External references used for this classification:
@@ -33,7 +37,10 @@ External references used for this classification:
 
 ## Compatibility Terms
 
-The protected compatibility identifiers are:
+The protected compatibility identifiers are summarized in `LICENSE` and
+specified in detail in `KBEAM-COMPATIBILITY.md`.
+
+They currently include:
 
 - `KBeam login`
 - `kbeam-auth-v1`
@@ -45,18 +52,8 @@ Integrators may add other login methods, wallet providers, policies, routes, UI,
 storage systems, and authorization rules. They may not remove or break the
 working KBeam-compatible login path.
 
-The minimum compatibility requirements are:
-
-- challenge opening line: `KBeam login`
-- protocol identifier: `kbeam-auth-v1`
-- app approval URI compatible with `kbeam://`
-- challenge creation for a pending ticket
-- approval using a KBeam wallet signature
-- polling, SSE, or equivalent waiting-browser status mechanism
-- session or authorization handoff for the browser that requested login
-- compatibility tests or equivalent verification after material changes and
-  before public deployment or redistribution
-- visible license or notice materials preserving these requirements
+The minimum compatibility requirements are summarized in the license and
+expanded in `KBEAM-COMPATIBILITY.md`.
 
 ## Testing And Maintenance Duty
 
@@ -85,8 +82,9 @@ releases, and substantial continuations based on this gateway must preserve:
 - the `KBeam` name as the origin and compatibility identity
 - the Licensor attribution and contact details from `NOTICE`
 - the license name
-- the protected compatibility identifiers listed above
+- the protected compatibility identifiers
 - the statement that KBeam-compatible login must remain available
+- the KBeam compatibility specification or equivalent technical notice
 
 Integrators may add their own attribution, product names, notices, and license
 terms for their original additions, but those additions must not remove or hide
@@ -138,9 +136,12 @@ access to the private KBeam repository to identify the licensor.
 
 To rollback this licensing change:
 
-1. Restore the previous `pyproject.toml` license text.
-2. Remove `LICENSE`.
-3. Remove `NOTICE`.
-4. Remove this document.
-5. Remove `TRADEMARKS.md`.
-6. Remove the README license section added with this change.
+1. Restore `LICENSE` to the previous `KBeam Auth Gateway Source Available
+   Compatibility License 1.0` text.
+2. Restore the previous `NOTICE` text.
+3. Remove `KBEAM-COMPATIBILITY.md`.
+4. Restore `pyproject.toml` license text to
+   `LicenseRef-KBeam-Auth-Gateway-1.0`.
+5. Remove README references to `KBEAM-COMPATIBILITY.md` and restore the license
+   name to version 1.0.
+6. Restore this document to the previous version 1.0 licensing notes.

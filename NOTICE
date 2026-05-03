@@ -32,17 +32,8 @@ Protected compatibility identifiers:
 - kbeam://
 - KBEAM/kbeam auth identifiers used to preserve KBeam auth compatibility
 
-Minimum compatibility requirements:
-- challenge opening line: KBeam login
-- protocol identifier: kbeam-auth-v1
-- app approval URI compatible with kbeam://
-- challenge creation for a pending ticket
-- approval using a KBeam wallet signature
-- polling, SSE, or equivalent waiting-browser status mechanism
-- session or authorization handoff for the browser that requested login
-- compatibility tests or equivalent verification after material changes and
-  before public deployment or redistribution
-- visible license or notice materials preserving these requirements
+The detailed technical compatibility requirements are documented in
+KBEAM-COMPATIBILITY.md.
 
 Testing and maintenance duty:
 Forks, derivative works, modified versions, public deployments, redistributed
@@ -64,4 +55,4 @@ reserved. They may be used only for accurate compatibility references and for
 the KBeam-compatible login flow as allowed by the license.
 
 License:
-KBeam Auth Gateway Source Available Compatibility License 1.0
+KBeam Auth Gateway Source Available Compatibility License 1.1
