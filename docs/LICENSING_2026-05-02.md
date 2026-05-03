@@ -125,7 +125,6 @@ Philippos Zachiridis
 Vivaldistr. 4
 72124 Pliezhausen
 Germany
-Phone: +49 151 23030931
 Email: support@kbeam.app
 ```
 
