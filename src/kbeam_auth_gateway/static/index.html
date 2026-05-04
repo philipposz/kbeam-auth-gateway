@@ -52,7 +52,6 @@
       }
       button:disabled {
         cursor: default;
-        opacity: 0.42;
       }
       input {
         width: 100%;
@@ -239,6 +238,9 @@
         color: #04100d;
         box-shadow: 0 14px 34px rgba(66, 224, 196, 0.18);
       }
+      .primary:disabled {
+        opacity: 0.42;
+      }
       .secondary {
         border: 1px solid rgba(255, 255, 255, 0.12);
         background: rgba(255, 255, 255, 0.05);
@@ -247,6 +249,31 @@
       .share-button {
         background: #ffffff;
         color: #091012;
+      }
+      .share-button:disabled {
+        opacity: 0.42;
+      }
+      .kbeam-action {
+        position: relative;
+        isolation: isolate;
+        background: var(--mint);
+        color: #04100d;
+        box-shadow: 0 16px 38px rgba(66, 224, 196, 0.22);
+        transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+      }
+      .kbeam-action:not(:disabled) {
+        animation: kbeamButtonPulse 1.55s ease-in-out infinite;
+      }
+      .kbeam-action:not(:disabled):hover {
+        transform: translateY(-1px);
+        box-shadow: 0 18px 46px rgba(66, 224, 196, 0.32);
+      }
+      .kbeam-action:disabled {
+        border: 1px solid rgba(66, 224, 196, 0.16);
+        background: rgba(66, 224, 196, 0.1);
+        color: rgba(216, 248, 241, 0.45);
+        box-shadow: none;
+        opacity: 1;
       }
       .proof-row {
         position: relative;
@@ -485,6 +512,23 @@
         70% { box-shadow: 0 0 0 11px rgba(66, 224, 196, 0); }
         100% { box-shadow: 0 0 0 0 rgba(66, 224, 196, 0); }
       }
+      @keyframes kbeamButtonPulse {
+        0% {
+          box-shadow:
+            0 14px 34px rgba(66, 224, 196, 0.2),
+            0 0 0 0 rgba(66, 224, 196, 0.36);
+        }
+        70% {
+          box-shadow:
+            0 18px 46px rgba(66, 224, 196, 0.3),
+            0 0 0 11px rgba(66, 224, 196, 0);
+        }
+        100% {
+          box-shadow:
+            0 14px 34px rgba(66, 224, 196, 0.2),
+            0 0 0 0 rgba(66, 224, 196, 0);
+        }
+      }
       @keyframes floatIcon {
         0% { transform: translateY(0) rotate(0deg); }
         33% { transform: translateY(-15px) rotate(5deg); }
@@ -629,7 +673,7 @@
           min-height: 43px;
           padding: 10px 12px;
         }
-        .hero-actions button:first-child {
+        #logout {
           grid-column: 1 / -1;
         }
         .panel-head {
@@ -821,8 +865,8 @@
               <span>Use allowlists, rate limits, HTTPS, and audit logs in production.</span>
             </div>
             <div class="hero-actions">
-              <button id="create" class="primary">Start wallet login</button>
-              <button id="openKbeam" class="share-button" disabled>Unlock with KBeam</button>
+              <button id="openKbeam" class="kbeam-action" disabled>Unlock with KBeam</button>
+              <button id="create" class="share-button">Start wallet login</button>
               <button id="logout" class="secondary">Logout</button>
             </div>
           </div>
@@ -1007,9 +1051,32 @@
         }
       }
 
+      function hasFreshTicket(status = state.ticket?.status) {
+        if (!state.ticket?.approveURL || status !== "pending") {
+          return false;
+        }
+        if (!state.ticket.expiresAt) {
+          return false;
+        }
+        const expiresAtMs = Date.parse(state.ticket.expiresAt);
+        return Number.isFinite(expiresAtMs) && expiresAtMs > Date.now();
+      }
+
+      function updateUnlockButton(status = state.ticket?.status) {
+        const canUnlock = hasFreshTicket(status);
+        openKbeamBtn.disabled = !canUnlock;
+        openKbeamBtn.setAttribute(
+          "aria-label",
+          canUnlock
+            ? "Unlock this fresh KBeam login ticket"
+            : "Unlock with KBeam is available after a fresh QR code is created"
+        );
+      }
+
       function setTicketStatus(status) {
         ticketStatus.textContent = status;
         liveStatus.textContent = status === "approved" ? "Wallet session active" : `Ticket ${status}`;
+        updateUnlockButton(status);
       }
 
       function renderQrMessage({ title, message, address = "", action = false, statusClass = "" }) {
@@ -1076,7 +1143,7 @@
           message: "Start a new wallet login.",
           statusClass: "expired",
         });
-        openKbeamBtn.disabled = true;
+        updateUnlockButton("expired");
       }
 
       function appendDeviceLoginReturnTo(approveURL) {
@@ -1181,7 +1248,7 @@
       async function startDeviceLogin(options = {}) {
         stopPolling();
         clearSessionNotice();
-        openKbeamBtn.disabled = true;
+        updateUnlockButton("creating");
         createBtn.disabled = true;
         setTicketStatus("creating");
         const result = await request("/api/auth/device-login", { method: "POST" });
@@ -1193,7 +1260,6 @@
           qr.innerHTML = state.ticket.qrSvg;
           approveUrl.value = appendDeviceLoginReturnTo(state.ticket.approveURL);
           setTicketStatus(state.ticket.status);
-          openKbeamBtn.disabled = !state.ticket.approveURL;
           state.pollDelayMs = 2000;
           scheduleExpiry();
           startEvents();
@@ -1206,7 +1272,7 @@
       createBtn.addEventListener("click", startDeviceLogin);
 
       openKbeamBtn.addEventListener("click", () => {
-        if (!state.ticket?.approveURL) return;
+        if (!hasFreshTicket()) return;
         window.location.href = appendDeviceLoginReturnTo(state.ticket.approveURL);
       });
 
@@ -1221,7 +1287,6 @@
         state.ticket = null;
         approveUrl.value = "";
         setTicketStatus("idle");
-        openKbeamBtn.disabled = true;
         show(result);
         flash("Session cleared.");
         startDeviceLogin({ silent: true }).catch((error) => show({ ok: false, error: String(error) }));
