@@ -474,6 +474,9 @@
       .toast[hidden] {
         display: none;
       }
+      .mobile-trust-strip {
+        display: none;
+      }
       @keyframes pulse {
         70% { box-shadow: 0 0 0 11px rgba(66, 224, 196, 0); }
         100% { box-shadow: 0 0 0 0 rgba(66, 224, 196, 0); }
@@ -496,9 +499,6 @@
           min-height: auto;
           padding: 24px;
         }
-        .login-panel {
-          order: -1;
-        }
         #qr {
           min-height: 300px;
         }
@@ -507,27 +507,207 @@
         }
       }
       @media (max-width: 640px) {
+        main {
+          width: min(100% - 18px, 1180px);
+          padding: 10px 0 26px;
+        }
         .nav {
-          align-items: flex-start;
-          flex-direction: column;
-          padding-bottom: 8px;
+          align-items: center;
+          gap: 10px;
+          min-height: 48px;
+          padding-bottom: 10px;
+        }
+        .brand {
+          min-width: 0;
+          font-size: 14px;
+        }
+        .brand span {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .brand-mark {
+          width: 30px;
+          height: 30px;
         }
         .nav-actions {
-          width: 100%;
-          flex-wrap: wrap;
+          width: auto;
+          flex: 0 0 auto;
+          gap: 7px;
+        }
+        .nav-link {
+          width: 38px;
+          min-height: 38px;
+          padding: 0;
+          border-radius: 50%;
+          font-size: 0;
+        }
+        .nav-link svg {
+          width: 17px;
+          height: 17px;
+        }
+        #shareX,
+        .status-strip {
+          display: none;
+        }
+        .hero {
+          min-height: auto;
+          gap: 12px;
+          padding-top: 0;
+        }
+        .hero-copy,
+        .login-panel,
+        .story-card,
+        .trust-section {
+          border-radius: 18px;
+        }
+        .hero-copy {
+          display: contents;
+          padding: 0;
+          border: 0;
+          background: transparent;
+          box-shadow: none;
+          backdrop-filter: none;
+        }
+        .hero-copy > div:first-child {
+          order: 1;
+          border: 1px solid rgba(255, 255, 255, 0.09);
+          border-radius: 18px;
+          background: linear-gradient(180deg, rgba(255,255,255,0.065), rgba(255,255,255,0.032));
+          box-shadow: var(--shadow);
+          backdrop-filter: blur(18px);
+          padding: 18px;
+        }
+        .login-panel {
+          order: 2;
+        }
+        .proof-row {
+          order: 3;
+        }
+        .eyebrow {
+          padding: 6px 10px;
+          font-size: 11px;
         }
         .proof-row {
           grid-template-columns: 1fr;
+          gap: 8px;
+          margin-top: 18px;
+        }
+        .proof {
+          min-height: auto;
+          padding: 12px;
+        }
+        .proof strong {
+          margin-bottom: 3px;
+          font-size: 16px;
+        }
+        .proof span {
+          font-size: 13px;
         }
         h1 {
-          font-size: 44px;
+          margin: 14px 0 10px;
+          font-size: 38px;
+          line-height: 0.98;
+        }
+        .lead {
+          font-size: 16px;
+          line-height: 1.44;
         }
         .hero-actions {
           display: grid;
           grid-template-columns: 1fr 1fr;
+          gap: 8px;
+          margin-top: 16px;
+        }
+        .hero-actions button {
+          width: 100%;
+          min-height: 43px;
+          padding: 10px 12px;
         }
         .hero-actions button:first-child {
           grid-column: 1 / -1;
+        }
+        .panel-head {
+          padding: 15px 15px 12px;
+        }
+        .qr-zone {
+          padding: 0 15px 15px;
+        }
+        #qr {
+          min-height: 290px;
+          padding: 13px;
+          border-radius: 18px;
+        }
+        #qr svg {
+          width: min(100%, 280px);
+          border-width: 12px;
+          border-radius: 16px;
+        }
+        label {
+          margin-top: 10px;
+          font-size: 11px;
+        }
+        #approveUrl {
+          min-height: 36px;
+          border-radius: 11px;
+          font-size: 12px;
+        }
+        .success-stage {
+          padding: 14px;
+          border-radius: 17px;
+        }
+        .success-stage strong {
+          font-size: 24px;
+        }
+        .developer-band {
+          gap: 12px;
+          margin-top: 12px;
+        }
+        .story-card {
+          padding: 16px;
+        }
+        .story-card h2 {
+          font-size: 19px;
+        }
+        .story-card p {
+          font-size: 14px;
+        }
+        pre {
+          max-height: 150px;
+          font-size: 11px;
+        }
+        .trust-section {
+          margin-top: 12px;
+          padding: 18px;
+        }
+        .trust-section h2 {
+          font-size: 31px;
+        }
+        .trust-section p {
+          font-size: 14px;
+          line-height: 1.55;
+        }
+        .trust-summary {
+          font-size: 20px;
+        }
+        .mobile-trust-strip {
+          display: grid;
+          gap: 8px;
+          margin-top: 14px;
+        }
+        .mobile-trust-strip span {
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 14px;
+          padding: 10px 11px;
+          background: rgba(0, 0, 0, 0.18);
+          color: #d8f8f1;
+          font-size: 13px;
+          line-height: 1.35;
+        }
+        .toast {
+          right: 10px;
+          bottom: 10px;
+          max-width: calc(100vw - 20px);
         }
       }
     </style>
@@ -627,6 +807,11 @@
               challenge, while your site keeps its sessions, permissions, users,
               and private routes.
             </p>
+            <div class="mobile-trust-strip" aria-label="Mobile trust summary">
+              <span>No password is transmitted or stored.</span>
+              <span>KBeam never receives the browser session cookie.</span>
+              <span>Use allowlists, rate limits, HTTPS, and audit logs in production.</span>
+            </div>
             <div class="hero-actions">
               <button id="create" class="primary">Start wallet login</button>
               <button id="openKbeam" class="share-button" disabled>Unlock with KBeam</button>
