@@ -59,6 +59,25 @@ This repository contains the extracted planning foundation, a FastAPI runtime
 skeleton, native Schnorr signature verification, a local demo UI, tests, and
 generic deployment examples.
 
+## Vision
+
+KBeam Auth Gateway starts with one clear purpose: secure login with KBeam,
+without passwords and without KBeam knowing the protected content of the website
+that embeds it.
+
+The next stage is intended to add optional user management. A wallet address
+could be connected to a customer account, while each website still controls its
+own roles, permissions, data, and protected areas.
+
+Future versions are also planned to support optional contact and support flows
+after login. Users could choose to be reachable for support, direct chat,
+follow-up questions, or later features such as payments and customer-related
+actions.
+
+These additions are not part of the first release. The first step remains a
+transparent, self-hostable auth gateway. The development direction is to grow it
+into a base for secure customer accounts, support, and future product workflows.
+
 ## License
 
 This project uses the
