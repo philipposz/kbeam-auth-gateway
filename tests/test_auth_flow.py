@@ -228,6 +228,14 @@ def test_rejects_wallet_outside_allowlist():
     assert response.status_code == 403
     assert response.json()["error"] == "auth_wallet_not_allowed"
 
+    poll_response = client.get(
+        f"/api/auth/device-login/{ticket['ticketId']}",
+        params={"pollToken": ticket["pollToken"]},
+    )
+    denied_ticket = poll_response.json()["deviceLogin"]
+    assert denied_ticket["status"] == "denied"
+    assert denied_ticket["failureReason"] == "auth_wallet_not_allowed"
+
 
 def test_ticket_can_only_be_approved_once():
     private_key = _private_key()

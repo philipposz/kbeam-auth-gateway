@@ -309,6 +309,12 @@ class SQLiteStore:
                 );
                 """
             )
+            columns = {
+                row["name"]
+                for row in self._conn.execute("pragma table_info(tickets)").fetchall()
+            }
+            if "failure_reason" not in columns:
+                self._conn.execute("alter table tickets add column failure_reason text")
             self._conn.commit()
 
     def bootstrap(self, settings: Settings) -> None:
@@ -334,8 +340,8 @@ class SQLiteStore:
             """
             insert into tickets (
                 ticket_id, poll_token, approve_token, approve_url, qr_svg, status,
-                issued_at, expires_at, challenge_id, session_id
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                issued_at, expires_at, challenge_id, session_id, failure_reason
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 ticket.ticketId,
@@ -348,6 +354,7 @@ class SQLiteStore:
                 isoformat_utc(ticket.expiresAt),
                 ticket.challengeId,
                 ticket.sessionId,
+                ticket.failureReason,
             ),
         )
 
@@ -365,6 +372,7 @@ class SQLiteStore:
             expiresAt=_parse_dt(row["expires_at"]),
             challengeId=row["challenge_id"],
             sessionId=row["session_id"],
+            failureReason=row["failure_reason"] if "failure_reason" in row.keys() else None,
         )
 
     def get_ticket(self, ticket_id: str) -> TicketRecord | None:
@@ -375,9 +383,9 @@ class SQLiteStore:
     def save_ticket(self, ticket: TicketRecord) -> None:
         self._execute(
             """
-            update tickets set status = ?, challenge_id = ?, session_id = ? where ticket_id = ?
+            update tickets set status = ?, challenge_id = ?, session_id = ?, failure_reason = ? where ticket_id = ?
             """,
-            (ticket.status, ticket.challengeId, ticket.sessionId, ticket.ticketId),
+            (ticket.status, ticket.challengeId, ticket.sessionId, ticket.failureReason, ticket.ticketId),
         )
 
     def create_challenge(self, challenge: ChallengeRecord) -> None:

@@ -79,6 +79,7 @@ class TicketRecord(BaseModel):
     expiresAt: datetime
     challengeId: str | None = None
     sessionId: str | None = None
+    failureReason: str | None = None
 
 
 class ChallengeRecord(BaseModel):

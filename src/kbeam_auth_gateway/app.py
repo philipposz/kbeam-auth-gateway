@@ -64,7 +64,7 @@ def _web_approve_url(ticket) -> str:
 
 
 def _public_ticket(ticket) -> dict:
-    return {
+    payload = {
         "ticketId": ticket.ticketId,
         "status": ticket.status,
         "approveURL": ticket.approveURL,
@@ -73,6 +73,9 @@ def _public_ticket(ticket) -> dict:
         "issuedAt": isoformat_utc(ticket.issuedAt),
         "expiresAt": isoformat_utc(ticket.expiresAt),
     }
+    if getattr(ticket, "failureReason", None):
+        payload["failureReason"] = ticket.failureReason
+    return payload
 
 
 def _ticket_status_view(ticket) -> dict:
@@ -524,6 +527,10 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
             store.delete_challenge(challenge.challengeId)
             raise _error(HTTPStatus.GONE, "auth_challenge_expired")
         if not store.is_wallet_allowed(challenge.address.lower(), settings):
+            ticket.status = "denied"
+            ticket.failureReason = "auth_wallet_not_allowed"
+            store.save_ticket(ticket)
+            store.delete_challenge(challenge.challengeId)
             store.add_audit(
                 "device_login_approve",
                 address=challenge.address,
