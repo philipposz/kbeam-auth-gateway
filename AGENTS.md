@@ -1,5 +1,16 @@
 # Agent Instructions
 
+## Verbindliche Branch-/Worktree-Angabe nach Pushes
+
+Sobald in einem Auftrag mindestens ein Commit gepusht wurde, muss die
+abschliessende Nutzerzusammenfassung fuer jedes betroffene Repository den
+tatsaechlich verwendeten Branch und den konkreten absoluten Worktree-Pfad
+ausgeben. Diese Angabe steht neben der ohnehin vorgeschriebenen Anzahl der
+eingesetzten Sub-Agenten und deren Einstellungen, damit der Nutzer den
+Arbeitsort und das Push-Ziel unmittelbar vergleichen kann. Wurden mehrere
+Repositories oder Worktrees verwendet, werden sie einzeln und eindeutig
+zugeordnet aufgefuehrt.
+
 Assume the worktree can be dirty.
 
 Before every commit or deploy, run `git status` and briefly name the concrete
@@ -31,4 +42,3 @@ not commit or push; name and assess the finding first.
 
 Generated reports, build artifacts, test outputs, and tool noise should not be
 added to the repository unless explicitly requested.
-
