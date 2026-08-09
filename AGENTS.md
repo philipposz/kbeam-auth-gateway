@@ -42,3 +42,16 @@ not commit or push; name and assess the finding first.
 
 Generated reports, build artifacts, test outputs, and tool noise should not be
 added to the repository unless explicitly requested.
+
+## Repository Boundaries
+
+This Auth Gateway repository is not a source or deployment target for the
+public website or any mobile client. Website and client work is maintained in
+separately governed repositories and must follow the authoritative agent rules
+of those repositories.
+
+A website or client task does not authorize changes or deployments to Auth
+Gateway, its configuration, or infrastructure. Historical client sources are
+reference-only and must not be treated as an active implementation or release
+source. If the owning repository or its rules cannot be identified, stop and
+ask before making a cross-repository change.
