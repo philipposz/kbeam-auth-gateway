@@ -1,57 +1,31 @@
-# Agent Instructions
+# KBeam Auth Gateway Agent Instructions
 
-## Verbindliche Branch-/Worktree-Angabe nach Pushes
+These instructions replace inherited repository-specific instructions for all files in this repository. Universal user-level policy still applies.
 
-Sobald in einem Auftrag mindestens ein Commit gepusht wurde, muss die
-abschliessende Nutzerzusammenfassung fuer jedes betroffene Repository den
-tatsaechlich verwendeten Branch und den konkreten absoluten Worktree-Pfad
-ausgeben. Diese Angabe steht neben der ohnehin vorgeschriebenen Anzahl der
-eingesetzten Sub-Agenten und deren Einstellungen, damit der Nutzer den
-Arbeitsort und das Push-Ziel unmittelbar vergleichen kann. Wurden mehrere
-Repositories oder Worktrees verwendet, werden sie einzeln und eindeutig
-zugeordnet aufgefuehrt.
+## Repository Scope
 
-Assume the worktree can be dirty.
+This public repository owns the standalone KBeam wallet-authentication gateway, its protocol, signature verification, tickets, sessions, stores, demo, and generic integration examples. It does not own a public website, mobile client, application business logic, payment flow, or private infrastructure.
 
-Before every commit or deploy, run `git status` and briefly name the concrete
-files that will be affected. Commit only explicitly intended files and push the
-commit directly when a push is requested. Do not include unrelated local
-changes.
+Use `docs/context-map.md` to select no more than one to three initial sources. Current code, tests, CI, the license, and the compatibility specification are authoritative.
 
-Document work in rollback-friendly Markdown files inside this project.
+## Compatibility and Security Invariants
 
-## Private Repositories
+- Preserve the compatibility surface defined by `LICENSE` and `KBEAM-COMPATIBILITY.md`.
+- Keep the challenge byte-stable: fixed field order and labels, LF line endings, no trailing newline, the required first line, and the required protocol identifier.
+- Tickets and challenges remain short-lived, ticket-bound, address-bound, one-time, and replay-resistant.
+- Signature verification must bind the exact challenge bytes, public key, claimed address, and network. Native verification is the default; demo mode is only for synthetic local-flow tests.
+- Do not weaken session-cookie settings, wallet policy, rate limits, admin authentication, pending-ticket limits, or secret-free audit logging without focused security review and tests.
+- This is a public repository. Examples use obvious placeholders only. Never add real credentials, wallet material, private hosts, production configuration, internal recovery details, or host-specific paths.
+- Deployment requires explicit authorization, a passing healthcheck, an affected-flow smoke test, and a rollback path. Repository examples remain generic.
 
-Host-specific documentation, recovery notes, internal deployment notes,
-infrastructure paths, and placeholder `.env.example` files are acceptable in
-private repositories. Real secrets, API keys, private keys, tokens,
-certificates, wallet files, productive `.env` files, or other sensitive content
-must never be committed or pushed.
+## Verification
 
-## Public Repositories
+Run the CI contract for code or configuration changes:
 
-Be stricter. Do not include private paths, internal infrastructure details,
-recovery internals, local user paths, or production configuration hints with
-sensitive details. Example values and clearly marked example files are allowed.
+```text
+python -m ruff check .
+python tools/public_hygiene_check.py
+python -m pytest
+```
 
-## General
-
-When files or contents look suspicious, check whether they contain real secrets,
-production credentials, or only documentation and placeholders. If unsure, do
-not commit or push; name and assess the finding first.
-
-Generated reports, build artifacts, test outputs, and tool noise should not be
-added to the repository unless explicitly requested.
-
-## Repository Boundaries
-
-This Auth Gateway repository is not a source or deployment target for the
-public website or any mobile client. Website and client work is maintained in
-separately governed repositories and must follow the authoritative agent rules
-of those repositories.
-
-A website or client task does not authorize changes or deployments to Auth
-Gateway, its configuration, or infrastructure. Historical client sources are
-reference-only and must not be treated as an active implementation or release
-source. If the owning repository or its rules cannot be identified, stop and
-ask before making a cross-repository change.
+Compatibility-sensitive changes must also exercise the affected ticket, challenge, signature, event, session, and protected-area flow. A documentation-only policy migration requires static public-hygiene, Markdown-link, diff, and staging checks but no runtime build.
