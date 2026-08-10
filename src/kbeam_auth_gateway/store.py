@@ -5,7 +5,7 @@ import secrets
 import sqlite3
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
@@ -24,6 +24,13 @@ class AuthStore(Protocol):
     def create_challenge(self, challenge: ChallengeRecord) -> None: ...
     def get_challenge(self, challenge_id: str) -> ChallengeRecord | None: ...
     def delete_challenge(self, challenge_id: str) -> None: ...
+    def consume_challenge_and_create_session(
+        self,
+        *,
+        ticket_id: str,
+        challenge_id: str,
+        session: SessionRecord,
+    ) -> bool: ...
     def create_session(self, session: SessionRecord) -> None: ...
     def get_session(self, session_id: str) -> SessionRecord | None: ...
     def delete_session(self, session_id: str) -> None: ...
@@ -49,6 +56,7 @@ class AuthStore(Protocol):
     ) -> None: ...
     def list_audit(self, limit: int = 100) -> list[AuditRecord]: ...
     def check_rate_limit(self, key: str, *, limit: int, window_seconds: int) -> bool: ...
+    def healthcheck(self) -> bool: ...
 
 
 def new_token() -> str:
@@ -60,7 +68,7 @@ def new_id(prefix: str) -> str:
 
 
 def _parse_dt(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return datetime.fromisoformat(value)
 
 
 def _wallet_record(address: str, *, label: str = "", role: str = "user", enabled: bool = True) -> WalletRecord:
@@ -84,6 +92,8 @@ class InMemoryStore:
         self.wallets: dict[str, WalletRecord] = {}
         self.audit: list[AuditRecord] = []
         self.rate_events: dict[str, list[float]] = {}
+        self.approved_ticket_retention_seconds = 86400
+        self.audit_retention_seconds = 2592000
 
     @property
     def lock(self) -> threading.RLock:
@@ -91,15 +101,23 @@ class InMemoryStore:
 
     def bootstrap(self, settings: Settings) -> None:
         with self.lock:
+            self.approved_ticket_retention_seconds = settings.approved_ticket_retention_seconds
+            self.audit_retention_seconds = settings.audit_retention_seconds
             for address in settings.allowed_wallets:
                 if address not in self.wallets:
                     self.wallets[address] = _wallet_record(address, label="Bootstrap wallet", role="user")
 
     def purge_expired(self) -> None:
         now = utc_now()
+        approved_cutoff = now - timedelta(seconds=self.approved_ticket_retention_seconds)
+        audit_cutoff = now - timedelta(seconds=self.audit_retention_seconds)
         with self.lock:
             for ticket_id, ticket in list(self.tickets.items()):
-                if ticket.expiresAt <= now and ticket.status != "approved":
+                expired_pending = ticket.status != "approved" and ticket.expiresAt <= now
+                expired_approved = (
+                    ticket.status == "approved" and ticket.expiresAt <= approved_cutoff
+                )
+                if expired_pending or expired_approved:
                     self.tickets.pop(ticket_id, None)
             for challenge_id, challenge in list(self.challenges.items()):
                 if challenge.expiresAt <= now:
@@ -107,6 +125,7 @@ class InMemoryStore:
             for session_id, session in list(self.sessions.items()):
                 if session.expiresAt <= now:
                     self.sessions.pop(session_id, None)
+            self.audit = [record for record in self.audit if record.createdAt > audit_cutoff]
 
     def pending_ticket_count(self) -> int:
         self.purge_expired()
@@ -138,6 +157,32 @@ class InMemoryStore:
     def delete_challenge(self, challenge_id: str) -> None:
         with self.lock:
             self.challenges.pop(challenge_id, None)
+
+    def consume_challenge_and_create_session(
+        self,
+        *,
+        ticket_id: str,
+        challenge_id: str,
+        session: SessionRecord,
+    ) -> bool:
+        with self.lock:
+            ticket = self.tickets.get(ticket_id)
+            challenge = self.challenges.get(challenge_id)
+            if (
+                not ticket
+                or ticket.status != "pending"
+                or ticket.challengeId != challenge_id
+                or not challenge
+                or challenge.ticketId != ticket_id
+                or challenge.expiresAt <= utc_now()
+            ):
+                return False
+            self.sessions[session.sessionId] = session
+            ticket.status = "approved"
+            ticket.sessionId = session.sessionId
+            self.tickets[ticket_id] = ticket
+            self.challenges.pop(challenge_id, None)
+            return True
 
     def create_session(self, session: SessionRecord) -> None:
         with self.lock:
@@ -234,6 +279,9 @@ class InMemoryStore:
             self.rate_events[key] = events
             return True
 
+    def healthcheck(self) -> bool:
+        return True
+
 
 class SQLiteStore:
     def __init__(self, path: str) -> None:
@@ -243,6 +291,8 @@ class SQLiteStore:
         self._conn = sqlite3.connect(self.path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self.rate_events: dict[str, list[float]] = {}
+        self.approved_ticket_retention_seconds = 86400
+        self.audit_retention_seconds = 2592000
         self._migrate()
 
     @property
@@ -280,7 +330,13 @@ class SQLiteStore:
                     issued_at text not null,
                     expires_at text not null,
                     origin text not null,
-                    message text not null
+                    message text not null,
+                    protocol_version text not null default 'kbeam-auth-v1',
+                    api_origin text,
+                    relying_party text,
+                    audience text,
+                    return_origin text,
+                    joined_by_mobile integer not null default 0
                 );
                 create table if not exists sessions (
                     session_id text primary key,
@@ -307,6 +363,21 @@ class SQLiteStore:
                     details text not null,
                     created_at text not null
                 );
+                create table if not exists rate_limits (
+                    rate_key text not null,
+                    window_start integer not null,
+                    count integer not null,
+                    primary key (rate_key, window_start)
+                );
+                create table if not exists rate_limit_events (
+                    event_id text primary key,
+                    rate_key text not null,
+                    occurred_at_millis integer not null
+                );
+                create index if not exists rate_limits_window_start_idx
+                    on rate_limits (window_start);
+                create index if not exists rate_limit_events_key_time_idx
+                    on rate_limit_events (rate_key, occurred_at_millis);
                 """
             )
             columns = {
@@ -315,19 +386,49 @@ class SQLiteStore:
             }
             if "failure_reason" not in columns:
                 self._conn.execute("alter table tickets add column failure_reason text")
+            challenge_columns = {
+                row["name"]
+                for row in self._conn.execute("pragma table_info(challenges)").fetchall()
+            }
+            challenge_migrations = {
+                "protocol_version": "text not null default 'kbeam-auth-v1'",
+                "api_origin": "text",
+                "relying_party": "text",
+                "audience": "text",
+                "return_origin": "text",
+                "joined_by_mobile": "integer not null default 0",
+            }
+            for column, definition in challenge_migrations.items():
+                if column not in challenge_columns:
+                    self._conn.execute(f"alter table challenges add column {column} {definition}")
             self._conn.commit()
 
     def bootstrap(self, settings: Settings) -> None:
+        self.approved_ticket_retention_seconds = settings.approved_ticket_retention_seconds
+        self.audit_retention_seconds = settings.audit_retention_seconds
         for address in settings.allowed_wallets:
             if not self.get_wallet(address):
                 self.upsert_wallet(_wallet_record(address, label="Bootstrap wallet", role="user"))
 
     def purge_expired(self) -> None:
-        now = isoformat_utc(utc_now())
+        current = utc_now()
+        now = isoformat_utc(current)
+        approved_cutoff = isoformat_utc(
+            current - timedelta(seconds=self.approved_ticket_retention_seconds)
+        )
+        audit_cutoff = isoformat_utc(current - timedelta(seconds=self.audit_retention_seconds))
         with self.lock:
-            self._conn.execute("delete from tickets where expires_at <= ? and status != 'approved'", (now,))
+            self._conn.execute(
+                """
+                delete from tickets
+                where (expires_at <= ? and status != 'approved')
+                   or (expires_at <= ? and status = 'approved')
+                """,
+                (now, approved_cutoff),
+            )
             self._conn.execute("delete from challenges where expires_at <= ?", (now,))
             self._conn.execute("delete from sessions where expires_at <= ?", (now,))
+            self._conn.execute("delete from audit_log where created_at <= ?", (audit_cutoff,))
             self._conn.commit()
 
     def pending_ticket_count(self) -> int:
@@ -372,7 +473,7 @@ class SQLiteStore:
             expiresAt=_parse_dt(row["expires_at"]),
             challengeId=row["challenge_id"],
             sessionId=row["session_id"],
-            failureReason=row["failure_reason"] if "failure_reason" in row.keys() else None,
+            failureReason=row["failure_reason"],
         )
 
     def get_ticket(self, ticket_id: str) -> TicketRecord | None:
@@ -393,8 +494,9 @@ class SQLiteStore:
             """
             insert into challenges (
                 challenge_id, ticket_id, address, network, nonce,
-                issued_at, expires_at, origin, message
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                issued_at, expires_at, origin, message, protocol_version,
+                api_origin, relying_party, audience, return_origin, joined_by_mobile
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 challenge.challengeId,
@@ -406,6 +508,12 @@ class SQLiteStore:
                 isoformat_utc(challenge.expiresAt),
                 challenge.origin,
                 challenge.message,
+                challenge.protocolVersion,
+                challenge.apiOrigin,
+                challenge.relyingParty,
+                challenge.audience,
+                challenge.returnOrigin,
+                challenge.joinedByMobile,
             ),
         )
 
@@ -422,6 +530,12 @@ class SQLiteStore:
             expiresAt=_parse_dt(row["expires_at"]),
             origin=row["origin"],
             message=row["message"],
+            protocolVersion=row["protocol_version"],
+            apiOrigin=row["api_origin"],
+            relyingParty=row["relying_party"],
+            audience=row["audience"],
+            returnOrigin=row["return_origin"],
+            joinedByMobile=bool(row["joined_by_mobile"]),
         )
 
     def get_challenge(self, challenge_id: str) -> ChallengeRecord | None:
@@ -431,6 +545,65 @@ class SQLiteStore:
 
     def delete_challenge(self, challenge_id: str) -> None:
         self._execute("delete from challenges where challenge_id = ?", (challenge_id,))
+
+    def consume_challenge_and_create_session(
+        self,
+        *,
+        ticket_id: str,
+        challenge_id: str,
+        session: SessionRecord,
+    ) -> bool:
+        with self.lock:
+            try:
+                challenge = self._conn.execute(
+                    """
+                    select challenge_id from challenges
+                    where challenge_id = ? and ticket_id = ? and expires_at > ?
+                    """,
+                    (challenge_id, ticket_id, isoformat_utc(utc_now())),
+                ).fetchone()
+                if not challenge:
+                    self._conn.rollback()
+                    return False
+                updated = self._conn.execute(
+                    """
+                    update tickets set status = 'approved', session_id = ?
+                    where ticket_id = ? and status = 'pending' and challenge_id = ?
+                    """,
+                    (session.sessionId, ticket_id, challenge_id),
+                )
+                if updated.rowcount != 1:
+                    self._conn.rollback()
+                    return False
+                self._conn.execute(
+                    """
+                    insert into sessions (
+                        session_id, address, network, public_key,
+                        issued_at, expires_at, challenge_id
+                    ) values (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        session.sessionId,
+                        session.address,
+                        session.network,
+                        session.publicKey,
+                        isoformat_utc(session.issuedAt),
+                        isoformat_utc(session.expiresAt),
+                        session.challengeId,
+                    ),
+                )
+                deleted = self._conn.execute(
+                    "delete from challenges where challenge_id = ? and ticket_id = ?",
+                    (challenge_id, ticket_id),
+                )
+                if deleted.rowcount != 1:
+                    self._conn.rollback()
+                    return False
+                self._conn.commit()
+                return True
+            except Exception:
+                self._conn.rollback()
+                raise
 
     def create_session(self, session: SessionRecord) -> None:
         self._execute(
@@ -585,16 +758,44 @@ class SQLiteStore:
         ]
 
     def check_rate_limit(self, key: str, *, limit: int, window_seconds: int) -> bool:
-        now = time.monotonic()
-        cutoff = now - window_seconds
+        now_millis = int(time.time() * 1000)
+        cutoff_millis = now_millis - (window_seconds * 1000)
         with self.lock:
-            events = [item for item in self.rate_events.get(key, []) if item >= cutoff]
-            if len(events) >= limit:
-                self.rate_events[key] = events
+            try:
+                self._conn.execute("begin immediate")
+                self._conn.execute(
+                    "delete from rate_limit_events where occurred_at_millis < ?",
+                    (cutoff_millis,),
+                )
+                row = self._conn.execute(
+                    """
+                    select count(*) as count from rate_limit_events
+                    where rate_key = ? and occurred_at_millis >= ?
+                    """,
+                    (key, cutoff_millis),
+                ).fetchone()
+                if row and int(row["count"]) >= limit:
+                    self._conn.commit()
+                    return False
+                self._conn.execute(
+                    """
+                    insert into rate_limit_events (event_id, rate_key, occurred_at_millis)
+                    values (?, ?, ?)
+                    """,
+                    (new_id("rate"), key, now_millis),
+                )
+                self._conn.commit()
+                return True
+            except Exception:
+                self._conn.rollback()
+                raise
+
+    def healthcheck(self) -> bool:
+        with self.lock:
+            try:
+                return self._conn.execute("select 1").fetchone() is not None
+            except sqlite3.Error:
                 return False
-            events.append(now)
-            self.rate_events[key] = events
-            return True
 
 
 class _PostgresConnection:
@@ -604,6 +805,7 @@ class _PostgresConnection:
             from psycopg.rows import dict_row
         except ImportError as exc:
             raise RuntimeError("Install psycopg to use KBEAM_AUTH_STORE_BACKEND=postgres") from exc
+        self._database_error = psycopg.Error
         self._conn = psycopg.connect(dsn, row_factory=dict_row)
 
     def execute(self, sql: str, params: tuple = ()):
@@ -612,12 +814,29 @@ class _PostgresConnection:
     def commit(self) -> None:
         self._conn.commit()
 
+    def rollback(self) -> None:
+        self._conn.rollback()
+
+    def healthcheck(self) -> bool:
+        try:
+            healthy = self.execute("select 1").fetchone() is not None
+            self._conn.commit()
+            return healthy
+        except self._database_error:
+            try:
+                self._conn.rollback()
+            except self._database_error:
+                pass
+            return False
+
 
 class PostgresStore(SQLiteStore):
     def __init__(self, dsn: str) -> None:
         self._lock = threading.RLock()
         self._conn = _PostgresConnection(dsn)
         self.rate_events: dict[str, list[float]] = {}
+        self.approved_ticket_retention_seconds = 86400
+        self.audit_retention_seconds = 2592000
         self._migrate()
 
     def _migrate(self) -> None:
@@ -633,7 +852,8 @@ class PostgresStore(SQLiteStore):
                 issued_at text not null,
                 expires_at text not null,
                 challenge_id text,
-                session_id text
+                session_id text,
+                failure_reason text
             )
             """,
             """
@@ -646,7 +866,13 @@ class PostgresStore(SQLiteStore):
                 issued_at text not null,
                 expires_at text not null,
                 origin text not null,
-                message text not null
+                message text not null,
+                protocol_version text not null default 'kbeam-auth-v1',
+                api_origin text,
+                relying_party text,
+                audience text,
+                return_origin text,
+                joined_by_mobile boolean not null default false
             )
             """,
             """
@@ -680,16 +906,89 @@ class PostgresStore(SQLiteStore):
                 created_at text not null
             )
             """,
+            """
+            create table if not exists rate_limits (
+                rate_key text not null,
+                window_start bigint not null,
+                count bigint not null,
+                primary key (rate_key, window_start)
+            )
+            """,
+            """
+            create table if not exists rate_limit_events (
+                event_id text primary key,
+                rate_key text not null,
+                occurred_at_millis bigint not null
+            )
+            """,
             "create index if not exists tickets_status_idx on tickets (status)",
             "create index if not exists tickets_expires_at_idx on tickets (expires_at)",
             "create index if not exists challenges_expires_at_idx on challenges (expires_at)",
             "create index if not exists sessions_expires_at_idx on sessions (expires_at)",
             "create index if not exists audit_log_created_at_idx on audit_log (created_at)",
+            "create index if not exists rate_limits_window_start_idx on rate_limits (window_start)",
+            (
+                "create index if not exists rate_limit_events_key_time_idx "
+                "on rate_limit_events (rate_key, occurred_at_millis)"
+            ),
+            "alter table tickets add column if not exists failure_reason text",
+            (
+                "alter table challenges add column if not exists protocol_version "
+                "text not null default 'kbeam-auth-v1'"
+            ),
+            "alter table challenges add column if not exists api_origin text",
+            "alter table challenges add column if not exists relying_party text",
+            "alter table challenges add column if not exists audience text",
+            "alter table challenges add column if not exists return_origin text",
+            (
+                "alter table challenges add column if not exists joined_by_mobile "
+                "boolean not null default false"
+            ),
         ]
         with self.lock:
             for statement in statements:
                 self._conn.execute(statement)
             self._conn.commit()
+
+    def healthcheck(self) -> bool:
+        with self.lock:
+            return self._conn.healthcheck()
+
+    def check_rate_limit(self, key: str, *, limit: int, window_seconds: int) -> bool:
+        now_millis = int(time.time() * 1000)
+        cutoff_millis = now_millis - (window_seconds * 1000)
+        with self.lock:
+            try:
+                self._conn.execute(
+                    "select pg_advisory_xact_lock(hashtextextended(?, 0))",
+                    (key,),
+                )
+                self._conn.execute(
+                    "delete from rate_limit_events where occurred_at_millis < ?",
+                    (cutoff_millis,),
+                )
+                row = self._conn.execute(
+                    """
+                    select count(*) as count from rate_limit_events
+                    where rate_key = ? and occurred_at_millis >= ?
+                    """,
+                    (key, cutoff_millis),
+                ).fetchone()
+                if row and int(row["count"]) >= limit:
+                    self._conn.commit()
+                    return False
+                self._conn.execute(
+                    """
+                    insert into rate_limit_events (event_id, rate_key, occurred_at_millis)
+                    values (?, ?, ?)
+                    """,
+                    (new_id("rate"), key, now_millis),
+                )
+                self._conn.commit()
+                return True
+            except Exception:
+                self._conn.rollback()
+                raise
 
 
 def create_store(settings: Settings) -> AuthStore:

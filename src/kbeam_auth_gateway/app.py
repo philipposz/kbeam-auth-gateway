@@ -3,33 +3,119 @@ from __future__ import annotations
 import asyncio
 import html
 import json
+import logging
 from http import HTTPStatus
+from ipaddress import ip_address, ip_network
 from pathlib import Path
 from typing import Annotated
-from urllib.parse import parse_qsl, urlparse, urlencode
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 
-from .config import Settings
+from .config import Settings, normalize_host_authority, normalize_public_origin
 from .models import (
     ApproveRequest,
     ApproveResponse,
     ChallengeCreateRequest,
     ChallengeCreateResponse,
     DeviceLoginCreateResponse,
-    WalletCreateRequest,
-    WalletUpdateRequest,
     SessionResponse,
     TicketPollResponse,
+    WalletCreateRequest,
+    WalletUpdateRequest,
 )
-from .protocol import build_challenge_message
+from .protocol import (
+    PROTOCOL_VERSION,
+    PROTOCOL_VERSION_V2,
+    build_challenge_message,
+    build_challenge_message_v2,
+)
 from .qr import qr_svg_for_url
 from .store import AuthStore, create_store, new_id, new_token
 from .time import isoformat_utc, utc_after, utc_now
 from .verifier import SignatureVerificationError, verify_signature
 
 STATIC_DIR = Path(__file__).parent / "static"
+LOGGER = logging.getLogger(__name__)
+
+
+def _normalize_origin(value: str, *, require_https: bool = True) -> str:
+    parsed = urlparse(value.strip())
+    if (
+        not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in {"", "/"}
+        or parsed.scheme not in {"https", "http"}
+        or (require_https and parsed.scheme != "https")
+    ):
+        raise ValueError("invalid_origin")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("invalid_origin") from exc
+    host = parsed.hostname.lower()
+    rendered_host = f"[{host}]" if ":" in host else host
+    default_port = 443 if parsed.scheme == "https" else 80
+    port_suffix = f":{port}" if port and port != default_port else ""
+    return f"{parsed.scheme.lower()}://{rendered_host}{port_suffix}"
+
+
+def _public_origin(settings: Settings) -> str:
+    return normalize_public_origin(settings.public_base_url)
+
+
+def _allowed_origins(values: tuple[str, ...], *, fallback: str) -> set[str]:
+    configured = values or (fallback,)
+    origins: set[str] = set()
+    for value in configured:
+        try:
+            origins.add(_normalize_origin(value))
+        except ValueError:
+            continue
+    return origins
+
+
+def _request_authority(request: Request) -> str:
+    raw_host = request.headers.get("host", "")
+    try:
+        return normalize_host_authority(raw_host)
+    except ValueError:
+        return ""
+
+
+def _client_ip(request: Request, settings: Settings) -> str:
+    direct = request.client.host if request.client else ""
+    try:
+        direct_ip = ip_address(direct)
+    except ValueError:
+        return direct or "unknown"
+    trusted_networks = []
+    for network in settings.trusted_proxy_cidrs:
+        try:
+            trusted_networks.append(ip_network(network, strict=False))
+        except ValueError:
+            continue
+    if any(direct_ip in network for network in trusted_networks):
+        forwarded_chain = request.headers.get("x-forwarded-for", "")
+        forwarded_parts = [item.strip() for item in forwarded_chain.split(",") if item.strip()]
+        if len(forwarded_parts) > 32:
+            return str(direct_ip)
+        forwarded_addresses = []
+        try:
+            forwarded_addresses = [ip_address(item) for item in forwarded_parts]
+        except ValueError:
+            return str(direct_ip)
+        for candidate in reversed([*forwarded_addresses, direct_ip]):
+            if any(candidate in network for network in trusted_networks):
+                continue
+            return str(candidate)
+        if forwarded_addresses:
+            return str(forwarded_addresses[0])
+    return str(direct_ip)
 
 
 def _api_base_url(settings: Settings) -> str:
@@ -53,7 +139,7 @@ def _web_approve_url(ticket) -> str:
         return ticket.approveURL
     query = dict(parse_qsl(parsed.query))
     api_base = query.get("api", "").rstrip("/")
-    base = api_base[:-4] if api_base.endswith("/api") else api_base
+    base = api_base.removesuffix("/api")
     approve_token = query.get("a") or ticket.approveToken
     if base:
         return (
@@ -102,7 +188,7 @@ def _session_view(session, *, organization_slug: str = "default") -> dict:
 
 
 def _challenge_view(challenge, *, organization_slug: str = "default") -> dict:
-    return {
+    payload = {
         "challengeId": challenge.challengeId,
         "address": challenge.address,
         "network": challenge.network,
@@ -113,6 +199,19 @@ def _challenge_view(challenge, *, organization_slug: str = "default") -> dict:
         "message": challenge.message,
         "organizationSlug": organization_slug,
     }
+    if challenge.protocolVersion == PROTOCOL_VERSION_V2:
+        payload.update(
+            {
+                "protocolVersion": challenge.protocolVersion,
+                "apiOrigin": challenge.apiOrigin,
+                "relyingParty": challenge.relyingParty,
+                "audience": challenge.audience,
+                "returnOrigin": challenge.returnOrigin,
+                "joinedByMobile": challenge.joinedByMobile,
+                "explicitConfirmationRequired": True,
+            }
+        )
+    return payload
 
 
 def _wallet_view(wallet) -> dict:
@@ -240,12 +339,78 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
     app.state.settings = settings
     app.state.store = store
 
+    configured_public_origin = _public_origin(settings)
+    trusted_rp_origins = _allowed_origins(
+        settings.trusted_rp_origins,
+        fallback=configured_public_origin,
+    )
+    allowed_return_origins = _allowed_origins(
+        settings.allowed_return_origins,
+        fallback=configured_public_origin,
+    )
+    expected_audience = settings.auth_audience or settings.service_slug
+    configured_authority = normalize_host_authority(urlparse(configured_public_origin).netloc)
+    trusted_hosts: set[str] = set()
+    for item in settings.trusted_hosts:
+        try:
+            trusted_hosts.add(normalize_host_authority(item))
+        except ValueError:
+            continue
+    if not trusted_hosts:
+        trusted_hosts = {configured_authority}
+
+    def shadow_audit(
+        event: str,
+        *,
+        address: str | None = None,
+        result: str = "ok",
+        details: dict | None = None,
+    ) -> None:
+        """Record observation-only telemetry without changing request behavior."""
+
+        try:
+            store.add_audit(event, address=address, result=result, details=details)
+        except Exception as exc:  # noqa: BLE001 - shadow must survive any store failure
+            LOGGER.warning(
+                "Auth shadow audit unavailable (error_type=%s)",
+                type(exc).__name__,
+            )
+
+    def shadow_audit_allowed(key: str) -> bool:
+        try:
+            return store.check_rate_limit(
+                key,
+                limit=1,
+                window_seconds=settings.rate_limit_window_seconds,
+            )
+        except Exception as exc:  # noqa: BLE001 - shadow must survive any store failure
+            LOGGER.warning(
+                "Auth shadow audit limiter unavailable (error_type=%s)",
+                type(exc).__name__,
+            )
+            return False
+
     def client_key(request: Request, scope: str) -> str:
-        forwarded_for = request.headers.get("x-forwarded-for", "")
-        ip = forwarded_for.split(",", 1)[0].strip() if forwarded_for else ""
-        if not ip and request.client:
-            ip = request.client.host
-        return f"{scope}:{ip or 'unknown'}"
+        return f"{scope}:{_client_ip(request, settings)}"
+
+    @app.middleware("http")
+    async def trusted_host_guard(request: Request, call_next):
+        request_host = _request_authority(request)
+        if request_host not in trusted_hosts:
+            details = {"path": request.url.path, "mode": settings.trusted_host_mode}
+            should_audit = shadow_audit_allowed(
+                f"host_policy_audit:{_client_ip(request, settings)}"
+            )
+            if settings.trusted_host_mode == "enforce":
+                if should_audit:
+                    shadow_audit("untrusted_host", result="blocked", details=details)
+                return JSONResponse(
+                    status_code=HTTPStatus.BAD_REQUEST,
+                    content={"ok": False, "error": "auth_untrusted_host"},
+                )
+            if should_audit:
+                shadow_audit("untrusted_host", result="shadow", details=details)
+        return await call_next(request)
 
     def require_rate(request: Request, scope: str, limit: int) -> None:
         if not store.check_rate_limit(
@@ -289,15 +454,33 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
     @app.get("/api/health")
     def health():
         errors = settings.validate()
+        storage_ok = store.healthcheck()
         return {
-            "ok": not errors,
+            "ok": not errors and storage_ok,
             "serverTime": isoformat_utc(utc_now()),
             "config": {
                 "ok": not errors,
                 "errorCount": len(errors),
                 "errors": errors,
             },
+            "storage": {"ok": storage_ok},
         }
+
+    @app.get("/ready")
+    @app.get("/api/ready")
+    def ready():
+        errors = settings.validate()
+        storage_ok = store.healthcheck()
+        payload = {
+            "ok": not errors and storage_ok,
+            "serverTime": isoformat_utc(utc_now()),
+            "config": {"ok": not errors, "errorCount": len(errors), "errors": errors},
+            "storage": {"ok": storage_ok},
+        }
+        return JSONResponse(
+            status_code=HTTPStatus.OK if payload["ok"] else HTTPStatus.SERVICE_UNAVAILABLE,
+            content=payload,
+        )
 
     @app.get("/", response_class=HTMLResponse)
     @app.get("/demo", response_class=HTMLResponse)
@@ -467,7 +650,95 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
         expires_at = utc_after(settings.challenge_ttl_seconds)
         challenge_id = new_id("challenge")
         nonce = new_token()
+        requested_protocol = payload.protocolVersion or PROTOCOL_VERSION
+        if requested_protocol not in {PROTOCOL_VERSION, PROTOCOL_VERSION_V2}:
+            raise _error(HTTPStatus.BAD_REQUEST, "auth_protocol_unsupported")
+
         origin = payload.origin or settings.public_base_url
+        effective_protocol = PROTOCOL_VERSION
+        v2_values: dict[str, str | bool | None] = {
+            "api_origin": None,
+            "relying_party": None,
+            "audience": None,
+            "return_origin": None,
+            "joined_by_mobile": False,
+        }
+        if requested_protocol == PROTOCOL_VERSION_V2:
+            v2_error = ""
+            try:
+                relying_party_origin = _normalize_origin(origin)
+                return_origin = _normalize_origin(payload.returnOrigin or origin)
+            except ValueError:
+                v2_error = "auth_origin_invalid"
+                relying_party_origin = ""
+                return_origin = ""
+            audience = payload.audience or expected_audience
+            if not v2_error and relying_party_origin not in trusted_rp_origins:
+                v2_error = "auth_origin_not_trusted"
+            if not v2_error and return_origin not in allowed_return_origins:
+                v2_error = "auth_return_origin_not_allowed"
+            if not v2_error and audience != expected_audience:
+                v2_error = "auth_audience_mismatch"
+            if not v2_error and not payload.joinedByMobile:
+                v2_error = "auth_mobile_join_required"
+
+            if settings.challenge_v2_mode == "dual":
+                if v2_error:
+                    raise _error(HTTPStatus.BAD_REQUEST, v2_error)
+                effective_protocol = PROTOCOL_VERSION_V2
+                origin = relying_party_origin
+                v2_values = {
+                    "api_origin": configured_public_origin,
+                    "relying_party": settings.service_slug,
+                    "audience": audience,
+                    "return_origin": return_origin,
+                    "joined_by_mobile": True,
+                }
+            else:
+                shadow_audit(
+                    "auth_challenge_v2_evaluate",
+                    address=address,
+                    result="shadow" if settings.challenge_v2_mode == "shadow" else "off",
+                    details={"reason": v2_error or "valid", "ticketId": ticket.ticketId},
+                )
+        elif settings.challenge_v2_mode == "shadow":
+            try:
+                normalized_v1_origin = _normalize_origin(origin)
+                origin_result = (
+                    "trusted" if normalized_v1_origin in trusted_rp_origins else "untrusted"
+                )
+            except ValueError:
+                origin_result = "invalid"
+            shadow_audit(
+                "auth_challenge_v1_origin_evaluate",
+                address=address,
+                result="shadow",
+                details={"result": origin_result, "ticketId": ticket.ticketId},
+            )
+
+        if effective_protocol == PROTOCOL_VERSION_V2:
+            message = build_challenge_message_v2(
+                address=address,
+                nonce=nonce,
+                issued_at=issued_at,
+                expires_at=expires_at,
+                ticket_id=ticket.ticketId,
+                api_origin=str(v2_values["api_origin"]),
+                relying_party=str(v2_values["relying_party"]),
+                relying_party_origin=origin,
+                audience=str(v2_values["audience"]),
+                return_origin=str(v2_values["return_origin"]),
+            )
+        else:
+            message = build_challenge_message(
+                settings=settings,
+                address=address,
+                nonce=nonce,
+                issued_at=issued_at,
+                expires_at=expires_at,
+                ticket_id=ticket.ticketId,
+                origin=origin,
+            )
         challenge = ChallengeRecord(
             challengeId=challenge_id,
             ticketId=ticket.ticketId,
@@ -477,15 +748,13 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
             issuedAt=issued_at,
             expiresAt=expires_at,
             origin=origin,
-            message=build_challenge_message(
-                settings=settings,
-                address=address,
-                nonce=nonce,
-                issued_at=issued_at,
-                expires_at=expires_at,
-                ticket_id=ticket.ticketId,
-                origin=origin,
-            ),
+            message=message,
+            protocolVersion=effective_protocol,
+            apiOrigin=v2_values["api_origin"],
+            relyingParty=v2_values["relying_party"],
+            audience=v2_values["audience"],
+            returnOrigin=v2_values["return_origin"],
+            joinedByMobile=bool(v2_values["joined_by_mobile"]),
         )
         if ticket.challengeId:
             store.delete_challenge(ticket.challengeId)
@@ -526,6 +795,33 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
         if challenge.expiresAt <= utc_now():
             store.delete_challenge(challenge.challengeId)
             raise _error(HTTPStatus.GONE, "auth_challenge_expired")
+        if payload.autoApprove and not settings.autoapprove_enabled:
+            store.add_audit(
+                "device_login_approve",
+                address=challenge.address,
+                result="blocked",
+                details={"reason": "auth_autoapprove_disabled", "ticketId": ticket.ticketId},
+            )
+            raise _error(HTTPStatus.FORBIDDEN, "auth_autoapprove_disabled")
+        if challenge.protocolVersion == PROTOCOL_VERSION_V2 and not payload.explicitConfirmation:
+            store.add_audit(
+                "device_login_approve",
+                address=challenge.address,
+                result="blocked",
+                details={"reason": "auth_explicit_confirmation_required", "ticketId": ticket.ticketId},
+            )
+            raise _error(HTTPStatus.BAD_REQUEST, "auth_explicit_confirmation_required")
+        if (
+            challenge.protocolVersion == PROTOCOL_VERSION
+            and settings.challenge_v2_mode == "shadow"
+            and not payload.explicitConfirmation
+        ):
+            shadow_audit(
+                "legacy_approval_confirmation_evaluate",
+                address=challenge.address,
+                result="shadow",
+                details={"ticketId": ticket.ticketId},
+            )
         if not store.is_wallet_allowed(challenge.address.lower(), settings):
             ticket.status = "denied"
             ticket.failureReason = "auth_wallet_not_allowed"
@@ -565,11 +861,22 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
             expiresAt=utc_after(settings.session_ttl_seconds),
             challengeId=challenge.challengeId,
         )
-        store.create_session(session)
-        ticket.status = "approved"
-        ticket.sessionId = session.sessionId
-        store.save_ticket(ticket)
-        store.delete_challenge(challenge.challengeId)
+        consumed = store.consume_challenge_and_create_session(
+            ticket_id=ticket.ticketId,
+            challenge_id=challenge.challengeId,
+            session=session,
+        )
+        if not consumed:
+            store.add_audit(
+                "device_login_approve",
+                address=challenge.address,
+                result="blocked",
+                details={"reason": "auth_challenge_already_consumed", "ticketId": ticket.ticketId},
+            )
+            raise _error(HTTPStatus.CONFLICT, "auth_challenge_already_consumed")
+        ticket = store.get_ticket(ticket.ticketId)
+        if not ticket:
+            raise _error(HTTPStatus.CONFLICT, "device_login_ticket_not_pending")
         store.add_audit(
             "device_login_approve",
             address=challenge.address,

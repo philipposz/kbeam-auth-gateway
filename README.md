@@ -42,6 +42,7 @@ secrets, private hostnames, and internal infrastructure notes are out of scope.
 
 - [Public gateway plan](docs/PUBLIC_KBEAM_AUTH_GATEWAY_PLAN_2026-05-02.md)
 - [Protocol v1](docs/protocol-v1.md)
+- [Additive challenge v2 and rollout gates](docs/AUTH_GATEWAY_PLAN2_V2_SHADOW_2026-08-10.md)
 - [KBeam compatibility specification](KBEAM-COMPATIBILITY.md)
 - [Public login transparency](docs/PUBLIC_LOGIN_TRANSPARENCY_2026-05-02.md)
 - [Native signature verifier](docs/native-signature-verifier.md)
@@ -126,6 +127,13 @@ address. `demo` mode is available only for local flow tests.
 - admin API protected by `KBEAM_AUTH_ADMIN_TOKEN`
 - per-IP rate limits for ticket creation, polling, SSE, challenge, approval, and admin routes
 - maximum pending-ticket cap
+- exact trusted-host and trusted-proxy controls, with forwarding ignored unless
+  the direct peer is explicitly trusted
+- an opt-in `kbeam-auth-v2` challenge that binds API origin, relying party,
+  audience, ticket, wallet, nonce, lifetime, and return origin
+- atomic challenge consumption plus session creation across supported stores
+- separate liveness (`/health`) and fail-closed readiness (`/ready`) views
+- bounded approved-ticket and audit retention
 - SSE ticket events with polling fallback in the demo
 - automatic QR expiry handling in the demo
 - KBeam-compatible `kbeam://` QR links, currently `kbeam://pos-login`, with
@@ -146,6 +154,15 @@ curl -X POST -H "Authorization: Bearer $KBEAM_AUTH_ADMIN_TOKEN" \
 
 Use `KBEAM_AUTH_STORE_BACKEND=postgres` with `KBEAM_AUTH_POSTGRES_DSN` when the
 gateway should share durable state across rolling releases or multiple workers.
+
+Challenge v2 defaults to `shadow`; it does not replace or reject protocol v1.
+The `joinedByMobile`, `explicitConfirmation`, and `autoApprove` fields are
+client assertions, not server-verifiable evidence of UI behavior. The default
+`KBEAM_AUTH_AUTOAPPROVE_ENABLED=false` blocks approvals that are explicitly
+labelled automatic, but an untrusted client could mislabel them. Consequently
+`dual` is limited to non-production interoperability testing until paired mobile
+releases enforce the UI contract and independent evidence confirms it. See the
+rollout document before changing any of these gates.
 
 ## Docker
 

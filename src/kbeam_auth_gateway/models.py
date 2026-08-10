@@ -15,6 +15,10 @@ class ChallengeCreateRequest(BaseModel):
     address: str = Field(min_length=1)
     origin: str | None = None
     network: str | None = None
+    protocolVersion: str | None = None
+    audience: str | None = None
+    returnOrigin: str | None = None
+    joinedByMobile: bool = False
 
 
 class ChallengeCreateResponse(BaseModel):
@@ -34,6 +38,8 @@ class ApproveRequest(BaseModel):
     address: str = Field(min_length=1)
     signature: str = Field(min_length=1)
     publicKey: str | None = None
+    explicitConfirmation: bool = False
+    autoApprove: bool = False
 
 
 class ApproveResponse(BaseModel):
@@ -92,6 +98,12 @@ class ChallengeRecord(BaseModel):
     expiresAt: datetime
     origin: str
     message: str
+    protocolVersion: str = "kbeam-auth-v1"
+    apiOrigin: str | None = None
+    relyingParty: str | None = None
+    audience: str | None = None
+    returnOrigin: str | None = None
+    joinedByMobile: bool = False
 
 
 class SessionRecord(BaseModel):

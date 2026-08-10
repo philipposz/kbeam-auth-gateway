@@ -1,0 +1,18 @@
+{
+  "protocol": "kbeam-auth-v2",
+  "fields": {
+    "apiOrigin": "https://auth.example.com",
+    "relyingParty": "test-service",
+    "relyingPartyOrigin": "https://protected.example.com",
+    "audience": "test-audience",
+    "address": "kaspa:example",
+    "nonce": "nonce-v2-123",
+    "issuedAt": "2026-08-10T12:00:00+00:00",
+    "expiresAt": "2026-08-10T12:05:00+00:00",
+    "ticket": "ticket-v2-123",
+    "returnOrigin": "https://protected.example.com"
+  },
+  "message": "KBeam login\nProtocol: kbeam-auth-v2\nAPI Origin: https://auth.example.com\nRelying Party: test-service\nRelying Party Origin: https://protected.example.com\nAudience: test-audience\nAddress: kaspa:example\nNonce: nonce-v2-123\nIssued At: 2026-08-10T12:00:00Z\nExpires At: 2026-08-10T12:05:00Z\nTicket: ticket-v2-123\nReturn Origin: https://protected.example.com",
+  "utf8Hex": "4b4265616d206c6f67696e0a50726f746f636f6c3a206b6265616d2d617574682d76320a415049204f726967696e3a2068747470733a2f2f617574682e6578616d706c652e636f6d0a52656c79696e672050617274793a20746573742d736572766963650a52656c79696e67205061727479204f726967696e3a2068747470733a2f2f70726f7465637465642e6578616d706c652e636f6d0a41756469656e63653a20746573742d61756469656e63650a416464726573733a206b617370613a6578616d706c650a4e6f6e63653a206e6f6e63652d76322d3132330a4973737565642041743a20323032362d30382d31305431323a30303a30305a0a457870697265732041743a20323032362d30382d31305431323a30353a30305a0a5469636b65743a207469636b65742d76322d3132330a52657475726e204f726967696e3a2068747470733a2f2f70726f7465637465642e6578616d706c652e636f6d",
+  "sha256": "54a587f949109ff6ca5610979d02f627d10b7870f9383f547b6e2ffcb06dba0c"
+}
