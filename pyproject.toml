@@ -32,9 +32,6 @@ kbeam-auth-gateway = "kbeam_auth_gateway.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/kbeam_auth_gateway"]
 
-[tool.hatch.build.targets.wheel.force-include]
-"src/kbeam_auth_gateway/static" = "kbeam_auth_gateway/static"
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
