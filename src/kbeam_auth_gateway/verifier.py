@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from binascii import Error as HexError
 import hmac
+from binascii import Error as HexError
+from dataclasses import dataclass
 
 from coincurve import PublicKeyXOnly
 

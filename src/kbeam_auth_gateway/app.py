@@ -6,7 +6,7 @@ import json
 from http import HTTPStatus
 from pathlib import Path
 from typing import Annotated
-from urllib.parse import parse_qsl, urlparse, urlencode
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
@@ -18,10 +18,10 @@ from .models import (
     ChallengeCreateRequest,
     ChallengeCreateResponse,
     DeviceLoginCreateResponse,
-    WalletCreateRequest,
-    WalletUpdateRequest,
     SessionResponse,
     TicketPollResponse,
+    WalletCreateRequest,
+    WalletUpdateRequest,
 )
 from .protocol import build_challenge_message
 from .qr import qr_svg_for_url
@@ -53,7 +53,7 @@ def _web_approve_url(ticket) -> str:
         return ticket.approveURL
     query = dict(parse_qsl(parsed.query))
     api_base = query.get("api", "").rstrip("/")
-    base = api_base[:-4] if api_base.endswith("/api") else api_base
+    base = api_base.removesuffix("/api")
     approve_token = query.get("a") or ticket.approveToken
     if base:
         return (

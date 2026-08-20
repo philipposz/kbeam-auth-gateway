@@ -60,7 +60,7 @@ def new_id(prefix: str) -> str:
 
 
 def _parse_dt(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))  # noqa: FURB162
 
 
 def _wallet_record(address: str, *, label: str = "", role: str = "user", enabled: bool = True) -> WalletRecord:
@@ -372,7 +372,9 @@ class SQLiteStore:
             expiresAt=_parse_dt(row["expires_at"]),
             challengeId=row["challenge_id"],
             sessionId=row["session_id"],
-            failureReason=row["failure_reason"] if "failure_reason" in row.keys() else None,
+            failureReason=(
+                row["failure_reason"] if "failure_reason" in row.keys() else None  # noqa: SIM118
+            ),
         )
 
     def get_ticket(self, ticket_id: str) -> TicketRecord | None:
@@ -633,9 +635,11 @@ class PostgresStore(SQLiteStore):
                 issued_at text not null,
                 expires_at text not null,
                 challenge_id text,
-                session_id text
+                session_id text,
+                failure_reason text
             )
             """,
+            "alter table tickets add column if not exists failure_reason text",
             """
             create table if not exists challenges (
                 challenge_id text primary key,

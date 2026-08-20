@@ -65,7 +65,7 @@ class Settings:
     rate_limit_admin: int = 120
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         load_dotenv()
         return cls(
             bind=_env("KBEAM_AUTH_BIND", "127.0.0.1:18090"),

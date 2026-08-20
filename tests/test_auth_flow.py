@@ -199,11 +199,12 @@ def test_qr_svg_has_white_background_and_scan_get_page():
     assert ticket["ticketId"] in response.text
 
 
-def test_rejects_wallet_outside_allowlist():
+def test_rejects_wallet_outside_allowlist(tmp_path):
     private_key = _private_key()
     address = _address(private_key)
     settings = _settings(allowed_wallets=("kaspa:allowed",))
-    store = InMemoryStore()
+    database_path = tmp_path / "auth.sqlite3"
+    store = SQLiteStore(str(database_path))
     client = TestClient(create_app(settings=settings, store=store))
 
     ticket = client.post("/api/auth/device-login").json()["deviceLogin"]
@@ -228,10 +229,14 @@ def test_rejects_wallet_outside_allowlist():
     assert response.status_code == 403
     assert response.json()["error"] == "auth_wallet_not_allowed"
 
-    poll_response = client.get(
+    store._conn.close()
+    reopened_store = SQLiteStore(str(database_path))
+    reopened_client = TestClient(create_app(settings=settings, store=reopened_store))
+    poll_response = reopened_client.get(
         f"/api/auth/device-login/{ticket['ticketId']}",
         params={"pollToken": ticket["pollToken"]},
     )
+    assert poll_response.status_code == 200
     denied_ticket = poll_response.json()["deviceLogin"]
     assert denied_ticket["status"] == "denied"
     assert denied_ticket["failureReason"] == "auth_wallet_not_allowed"
@@ -340,19 +345,17 @@ def test_challenge_message_is_byte_stable():
         origin="https://protected.example.com",
     )
 
-    assert message == "\n".join(
-        [
-            "KBeam login",
-            "Protocol: kbeam-auth-v1",
-            "Service: test-service",
-            "Service Name: Test Service",
-            "Address: kaspa:example",
-            "Nonce: nonce-123",
-            "Issued At: 2026-05-02T12:00:00Z",
-            "Expires At: 2026-05-02T12:05:00Z",
-            "Ticket: ticket-123",
-            "Origin: https://protected.example.com",
-        ]
+    assert message == (
+        "KBeam login\n"
+        "Protocol: kbeam-auth-v1\n"
+        "Service: test-service\n"
+        "Service Name: Test Service\n"
+        "Address: kaspa:example\n"
+        "Nonce: nonce-123\n"
+        "Issued At: 2026-05-02T12:00:00Z\n"
+        "Expires At: 2026-05-02T12:05:00Z\n"
+        "Ticket: ticket-123\n"
+        "Origin: https://protected.example.com"
     )
 
 
