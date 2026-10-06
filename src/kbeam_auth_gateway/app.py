@@ -25,7 +25,7 @@ from .models import (
 )
 from .protocol import build_challenge_message
 from .qr import qr_svg_for_url
-from .store import AuthStore, create_store, new_id, new_token
+from .store import AuthStore, StoreTransitionError, create_store, new_id, new_token
 from .time import isoformat_utc, utc_after, utc_now
 from .verifier import SignatureVerificationError, verify_signature
 
@@ -240,6 +240,10 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
     app.state.settings = settings
     app.state.store = store
 
+    @app.exception_handler(StoreTransitionError)
+    async def transition_error(_request: Request, exc: StoreTransitionError):
+        return JSONResponse(status_code=exc.status_code, content={"ok": False, "error": exc.code})
+
     def client_key(request: Request, scope: str) -> str:
         forwarded_for = request.headers.get("x-forwarded-for", "")
         ip = forwarded_for.split(",", 1)[0].strip() if forwarded_for else ""
@@ -318,13 +322,6 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
 
         require_rate(request, "device_login", settings.rate_limit_device_login)
         store.purge_expired()
-        if store.pending_ticket_count() >= settings.max_pending_tickets:
-            store.add_audit(
-                "device_login_ticket_create",
-                result="blocked",
-                details={"reason": "max_pending_tickets"},
-            )
-            raise _error(HTTPStatus.TOO_MANY_REQUESTS, "max_pending_tickets_reached")
         issued_at = utc_now()
         expires_at = utc_after(settings.ticket_ttl_seconds)
         ticket_id = new_id("ticket")
@@ -345,7 +342,9 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
             issuedAt=issued_at,
             expiresAt=expires_at,
         )
-        store.create_ticket(ticket)
+        if not store.create_ticket_if_capacity(ticket, settings.max_pending_tickets):
+            store.add_audit("device_login_ticket_create", result="blocked", details={"reason": "max_pending_tickets"})
+            raise _error(HTTPStatus.TOO_MANY_REQUESTS, "max_pending_tickets_reached")
         store.add_audit("device_login_ticket_create", details={"ticketId": ticket.ticketId})
         payload = _public_ticket(ticket)
         payload["pollToken"] = poll_token
@@ -487,16 +486,7 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
                 origin=origin,
             ),
         )
-        if ticket.challengeId:
-            store.delete_challenge(ticket.challengeId)
-        store.create_challenge(challenge)
-        ticket.challengeId = challenge.challengeId
-        store.save_ticket(ticket)
-        store.add_audit(
-            "device_login_challenge_create",
-            address=address,
-            details={"ticketId": ticket.ticketId, "challengeId": challenge.challengeId},
-        )
+        ticket = store.replace_challenge(challenge, payload.approveToken)
 
         return {
             "ok": True,
@@ -527,17 +517,9 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
             store.delete_challenge(challenge.challengeId)
             raise _error(HTTPStatus.GONE, "auth_challenge_expired")
         if not store.is_wallet_allowed(challenge.address.lower(), settings):
-            ticket.status = "denied"
-            ticket.failureReason = "auth_wallet_not_allowed"
-            store.save_ticket(ticket)
-            store.delete_challenge(challenge.challengeId)
-            store.add_audit(
-                "device_login_approve",
-                address=challenge.address,
-                result="blocked",
-                details={"reason": "auth_wallet_not_allowed", "ticketId": ticket.ticketId},
-            )
-            raise _error(HTTPStatus.FORBIDDEN, "auth_wallet_not_allowed")
+            ticket, _ = store.finalize_approval(challenge, settings)
+            if ticket.status == "denied":
+                raise _error(HTTPStatus.FORBIDDEN, "auth_wallet_not_allowed")
         try:
             signature_verification = verify_signature(
                 settings=settings,
@@ -565,16 +547,9 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
             expiresAt=utc_after(settings.session_ttl_seconds),
             challengeId=challenge.challengeId,
         )
-        store.create_session(session)
-        ticket.status = "approved"
-        ticket.sessionId = session.sessionId
-        store.save_ticket(ticket)
-        store.delete_challenge(challenge.challengeId)
-        store.add_audit(
-            "device_login_approve",
-            address=challenge.address,
-            details={"ticketId": ticket.ticketId, "sessionId": session.sessionId},
-        )
+        ticket, session = store.finalize_approval(challenge, settings, session)
+        if session is None:
+            raise _error(HTTPStatus.FORBIDDEN, "auth_wallet_not_allowed")
 
         return {
             "ok": True,

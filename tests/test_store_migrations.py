@@ -42,6 +42,8 @@ class _PostgresConnectionDouble:
         normalized = " ".join(sql.split()).lower()
         self.executed.append((normalized, params))
 
+        if normalized == "select clock_timestamp() as now":
+            return _Cursor({"now": utc_now()})
         if normalized.startswith("create table if not exists tickets"):
             if not self.ticket_columns:
                 body = sql[sql.index("(") + 1 : sql.rindex(")")]
@@ -86,6 +88,9 @@ class _PostgresConnectionDouble:
 
     def commit(self) -> None:
         self.commits += 1
+
+    def rollback(self) -> None:
+        pass
 
 
 def _ticket(*, ticket_id: str = "ticket_test") -> TicketRecord:

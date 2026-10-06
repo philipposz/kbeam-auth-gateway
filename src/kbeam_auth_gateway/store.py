@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import copy
 import json
 import secrets
 import sqlite3
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol
@@ -15,6 +17,11 @@ from .time import isoformat_utc, utc_now
 
 
 class AuthStore(Protocol):
+    def create_ticket_if_capacity(self, ticket: TicketRecord, limit: int) -> bool: ...
+    def replace_challenge(self, challenge: ChallengeRecord, approve_token: str) -> TicketRecord: ...
+    def finalize_approval(
+        self, expected: ChallengeRecord, settings: Settings, session: SessionRecord | None = None,
+    ) -> tuple[TicketRecord, SessionRecord | None]: ...
     def bootstrap(self, settings: Settings) -> None: ...
     def purge_expired(self) -> None: ...
     def pending_ticket_count(self) -> int: ...
@@ -75,7 +82,86 @@ def _wallet_record(address: str, *, label: str = "", role: str = "user", enabled
     )
 
 
-class InMemoryStore:
+class StoreTransitionError(Exception):
+    def __init__(self, status_code: int, code: str) -> None:
+        super().__init__(code)
+        self.status_code = status_code
+        self.code = code
+
+
+class AtomicOperations:
+    def create_ticket_if_capacity(self, ticket: TicketRecord, limit: int) -> bool:
+        with self.atomic():
+            if self.pending_ticket_count() >= limit:
+                return False
+            self.create_ticket(ticket)
+            return True
+
+    def _pending_ticket(self, ticket_id: str) -> TicketRecord:
+        ticket = self.get_ticket(ticket_id)
+        if ticket is None or ticket.expiresAt <= self._now():
+            raise StoreTransitionError(404, "device_login_ticket_not_found")
+        if ticket.status != "pending":
+            raise StoreTransitionError(409, "device_login_ticket_not_pending")
+        return ticket
+
+    def replace_challenge(self, challenge: ChallengeRecord, approve_token: str) -> TicketRecord:
+        with self.atomic():
+            ticket = self._pending_ticket(challenge.ticketId)
+            if ticket.approveToken != approve_token:
+                raise StoreTransitionError(403, "device_login_approve_forbidden")
+            if challenge.expiresAt <= self._now():
+                raise StoreTransitionError(410, "auth_challenge_expired")
+            if ticket.challengeId:
+                self.delete_challenge(ticket.challengeId)
+            self.create_challenge(challenge)
+            ticket.challengeId = challenge.challengeId
+            self.save_ticket(ticket)
+            self.add_audit("device_login_challenge_create", address=challenge.address,
+                           details={"ticketId": ticket.ticketId, "challengeId": challenge.challengeId})
+            return ticket
+
+    def finalize_approval(
+        self, expected: ChallengeRecord, settings: Settings, session: SessionRecord | None = None,
+    ) -> tuple[TicketRecord, SessionRecord | None]:
+        with self.atomic():
+            ticket = self._pending_ticket(expected.ticketId)
+            if ticket.challengeId != expected.challengeId:
+                raise StoreTransitionError(400, "device_login_challenge_mismatch")
+            current = self.get_challenge(expected.challengeId)
+            now = self._now()  # PostgreSQL reads its clock after the authority lock wait.
+            if current is None:
+                raise StoreTransitionError(404, "auth_challenge_not_found")
+            if current.expiresAt <= now:
+                raise StoreTransitionError(410, "auth_challenge_expired")
+            if ticket.expiresAt <= now:
+                raise StoreTransitionError(404, "device_login_ticket_not_found")
+            if current != expected or current.ticketId != ticket.ticketId:
+                raise StoreTransitionError(400, "device_login_challenge_mismatch")
+            if not self.is_wallet_allowed(current.address.lower(), settings):
+                ticket.status = "denied"
+                ticket.failureReason = "auth_wallet_not_allowed"
+                self.save_ticket(ticket)
+                self.delete_challenge(current.challengeId)
+                self.add_audit("device_login_approve", address=current.address, result="blocked",
+                               details={"reason": "auth_wallet_not_allowed", "ticketId": ticket.ticketId})
+                return ticket, None
+            if session is None:
+                return ticket, None
+            if (session.challengeId != current.challengeId or session.address != current.address
+                    or session.network != current.network or session.expiresAt <= self._now()):
+                raise StoreTransitionError(410, "auth_challenge_expired")
+            self.create_session(session)
+            ticket.status = "approved"
+            ticket.sessionId = session.sessionId
+            self.save_ticket(ticket)
+            self.delete_challenge(current.challengeId)
+            self.add_audit("device_login_approve", address=current.address,
+                           details={"ticketId": ticket.ticketId, "sessionId": session.sessionId})
+            return ticket, session
+
+
+class InMemoryStore(AtomicOperations):
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self.tickets: dict[str, TicketRecord] = {}
@@ -88,6 +174,19 @@ class InMemoryStore:
     @property
     def lock(self) -> threading.RLock:
         return self._lock
+
+    @contextmanager
+    def atomic(self):
+        with self.lock:
+            before = copy.deepcopy((self.tickets, self.challenges, self.sessions, self.wallets, self.audit))
+            try:
+                yield
+            except BaseException:
+                self.tickets, self.challenges, self.sessions, self.wallets, self.audit = before
+                raise
+
+    def _now(self):
+        return utc_now()
 
     def bootstrap(self, settings: Settings) -> None:
         with self.lock:
@@ -120,7 +219,7 @@ class InMemoryStore:
     def get_ticket(self, ticket_id: str) -> TicketRecord | None:
         self.purge_expired()
         with self.lock:
-            return self.tickets.get(ticket_id)
+            return copy.deepcopy(self.tickets.get(ticket_id))
 
     def save_ticket(self, ticket: TicketRecord) -> None:
         with self.lock:
@@ -133,7 +232,7 @@ class InMemoryStore:
     def get_challenge(self, challenge_id: str) -> ChallengeRecord | None:
         self.purge_expired()
         with self.lock:
-            return self.challenges.get(challenge_id)
+            return copy.deepcopy(self.challenges.get(challenge_id))
 
     def delete_challenge(self, challenge_id: str) -> None:
         with self.lock:
@@ -146,7 +245,7 @@ class InMemoryStore:
     def get_session(self, session_id: str) -> SessionRecord | None:
         self.purge_expired()
         with self.lock:
-            return self.sessions.get(session_id)
+            return copy.deepcopy(self.sessions.get(session_id))
 
     def delete_session(self, session_id: str) -> None:
         with self.lock:
@@ -186,7 +285,7 @@ class InMemoryStore:
 
     def get_wallet(self, address: str) -> WalletRecord | None:
         with self.lock:
-            return self.wallets.get(address.strip().lower())
+            return copy.deepcopy(self.wallets.get(address.strip().lower()))
 
     def list_wallets(self) -> list[WalletRecord]:
         with self.lock:
@@ -235,7 +334,7 @@ class InMemoryStore:
             return True
 
 
-class SQLiteStore:
+class SQLiteStore(AtomicOperations):
     def __init__(self, path: str) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -249,11 +348,42 @@ class SQLiteStore:
     def lock(self) -> threading.RLock:
         return self._lock
 
-    def _execute(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
+    @contextmanager
+    def atomic(self):
         with self.lock:
-            cursor = self._conn.execute(sql, params)
+            outer = getattr(self, "_transaction_depth", 0) == 0
+            if outer:
+                self._conn.execute("begin immediate")
+            self._transaction_depth = getattr(self, "_transaction_depth", 0) + 1
+            try:
+                yield
+                if outer:
+                    self._conn.commit()
+            except BaseException:
+                if outer:
+                    self._conn.rollback()
+                raise
+            finally:
+                self._transaction_depth -= 1
+
+    def _now(self):
+        return utc_now()
+
+    def _commit(self):
+        if not getattr(self, "_transaction_depth", 0):
             self._conn.commit()
-            return cursor
+
+    def _one(self, sql, params=()):
+        with self.lock:
+            return self._conn.execute(sql, params).fetchone()
+
+    def _all(self, sql, params=()):
+        with self.lock:
+            return self._conn.execute(sql, params).fetchall()
+
+    def _execute(self, sql: str, params: tuple = ()):
+        with self.atomic():
+            return self._conn.execute(sql, params)
 
     def _migrate(self) -> None:
         with self.lock:
@@ -318,21 +448,26 @@ class SQLiteStore:
             self._conn.commit()
 
     def bootstrap(self, settings: Settings) -> None:
-        for address in settings.allowed_wallets:
-            if not self.get_wallet(address):
-                self.upsert_wallet(_wallet_record(address, label="Bootstrap wallet", role="user"))
+        with self.atomic():
+            for address in settings.allowed_wallets:
+                wallet = _wallet_record(address, label="Bootstrap wallet", role="user")
+                self._execute(
+                    "insert into wallets (address,label,role,enabled,created_at,updated_at) "
+                    "values (?,?,?,?,?,?) on conflict(address) do nothing",
+                    (wallet.address, wallet.label, wallet.role, wallet.enabled,
+                     isoformat_utc(wallet.createdAt), isoformat_utc(wallet.updatedAt)),
+                )
 
     def purge_expired(self) -> None:
-        now = isoformat_utc(utc_now())
-        with self.lock:
-            self._conn.execute("delete from tickets where expires_at <= ? and status != 'approved'", (now,))
-            self._conn.execute("delete from challenges where expires_at <= ?", (now,))
-            self._conn.execute("delete from sessions where expires_at <= ?", (now,))
-            self._conn.commit()
+        with self.atomic():
+            now = isoformat_utc(self._now())
+            self._execute("delete from tickets where expires_at <= ? and status != 'approved'", (now,))
+            self._execute("delete from challenges where expires_at <= ?", (now,))
+            self._execute("delete from sessions where expires_at <= ?", (now,))
 
     def pending_ticket_count(self) -> int:
         self.purge_expired()
-        row = self._conn.execute("select count(*) as count from tickets where status = 'pending'").fetchone()
+        row = self._one("select count(*) as count from tickets where status = 'pending'")
         return int(row["count"])
 
     def create_ticket(self, ticket: TicketRecord) -> None:
@@ -379,7 +514,7 @@ class SQLiteStore:
 
     def get_ticket(self, ticket_id: str) -> TicketRecord | None:
         self.purge_expired()
-        row = self._conn.execute("select * from tickets where ticket_id = ?", (ticket_id,)).fetchone()
+        row = self._one("select * from tickets where ticket_id = ?", (ticket_id,))
         return self._ticket_from_row(row)
 
     def save_ticket(self, ticket: TicketRecord) -> None:
@@ -428,7 +563,7 @@ class SQLiteStore:
 
     def get_challenge(self, challenge_id: str) -> ChallengeRecord | None:
         self.purge_expired()
-        row = self._conn.execute("select * from challenges where challenge_id = ?", (challenge_id,)).fetchone()
+        row = self._one("select * from challenges where challenge_id = ?", (challenge_id,))
         return self._challenge_from_row(row)
 
     def delete_challenge(self, challenge_id: str) -> None:
@@ -466,37 +601,39 @@ class SQLiteStore:
         )
 
     def get_session(self, session_id: str) -> SessionRecord | None:
-        self.purge_expired()
-        row = self._conn.execute("select * from sessions where session_id = ?", (session_id,)).fetchone()
-        return self._session_from_row(row)
+        with self.lock:
+            row = self._one("select * from sessions where session_id = ?", (session_id,))
+            session = self._session_from_row(row)
+            return session if session and session.expiresAt > self._now() else None
 
     def delete_session(self, session_id: str) -> None:
         self._execute("delete from sessions where session_id = ?", (session_id,))
 
     def upsert_wallet(self, wallet: WalletRecord) -> WalletRecord:
-        existing = self.get_wallet(wallet.address)
-        if existing:
-            wallet = wallet.model_copy(update={"createdAt": existing.createdAt, "updatedAt": utc_now()})
-        self._execute(
-            """
-            insert into wallets (address, label, role, enabled, created_at, updated_at)
-            values (?, ?, ?, ?, ?, ?)
-            on conflict(address) do update set
-                label = excluded.label,
-                role = excluded.role,
-                enabled = excluded.enabled,
-                updated_at = excluded.updated_at
-            """,
-            (
-                wallet.address,
-                wallet.label,
-                wallet.role,
-                wallet.enabled,
-                isoformat_utc(wallet.createdAt),
-                isoformat_utc(wallet.updatedAt),
-            ),
-        )
-        return wallet
+        with self.atomic():
+            existing = self.get_wallet(wallet.address)
+            if existing:
+                wallet = wallet.model_copy(update={"createdAt": existing.createdAt, "updatedAt": utc_now()})
+            self._execute(
+                """
+                insert into wallets (address, label, role, enabled, created_at, updated_at)
+                values (?, ?, ?, ?, ?, ?)
+                on conflict(address) do update set
+                    label = excluded.label,
+                    role = excluded.role,
+                    enabled = excluded.enabled,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    wallet.address,
+                    wallet.label,
+                    wallet.role,
+                    wallet.enabled,
+                    isoformat_utc(wallet.createdAt),
+                    isoformat_utc(wallet.updatedAt),
+                ),
+            )
+            return wallet
 
     def _wallet_from_row(self, row: sqlite3.Row | None) -> WalletRecord | None:
         if not row:
@@ -511,34 +648,26 @@ class SQLiteStore:
         )
 
     def update_wallet(
-        self,
-        address: str,
-        *,
-        label: str | None = None,
-        role: str | None = None,
+        self, address: str, *, label: str | None = None, role: str | None = None,
         enabled: bool | None = None,
     ) -> WalletRecord | None:
-        wallet = self.get_wallet(address)
-        if not wallet:
-            return None
-        changes = {"updatedAt": utc_now()}
-        if label is not None:
-            changes["label"] = label.strip()
-        if role is not None:
-            changes["role"] = role.strip() or "user"
-        if enabled is not None:
-            changes["enabled"] = enabled
-        return self.upsert_wallet(wallet.model_copy(update=changes))
+        with self.atomic():
+            assignments = ["updated_at = ?"]
+            values = [isoformat_utc(self._now())]
+            for column, value in (("label", label), ("role", role), ("enabled", enabled)):
+                if value is not None:
+                    assignments.append(column + " = ?")
+                    values.append((value.strip() or "user") if column == "role" else value.strip() if column == "label" else value)
+            values.append(address.strip().lower())
+            self._execute("update wallets set " + ", ".join(assignments) + " where address = ?", tuple(values))
+            return self.get_wallet(address)
 
     def get_wallet(self, address: str) -> WalletRecord | None:
-        row = self._conn.execute(
-            "select * from wallets where address = ?",
-            (address.strip().lower(),),
-        ).fetchone()
+        row = self._one("select * from wallets where address = ?", (address.strip().lower(),))
         return self._wallet_from_row(row)
 
     def list_wallets(self) -> list[WalletRecord]:
-        rows = self._conn.execute("select * from wallets order by address").fetchall()
+        rows = self._all("select * from wallets order by address")
         return [self._wallet_from_row(row) for row in rows if row]
 
     def is_wallet_allowed(self, address: str, settings: Settings) -> bool:
@@ -570,10 +699,7 @@ class SQLiteStore:
         )
 
     def list_audit(self, limit: int = 100) -> list[AuditRecord]:
-        rows = self._conn.execute(
-            "select * from audit_log order by id desc limit ?",
-            (max(1, min(limit, 1000)),),
-        ).fetchall()
+        rows = self._all("select * from audit_log order by id desc limit ?", (max(1, min(limit, 1000)),))
         return [
             AuditRecord(
                 id=row["id"],
@@ -606,13 +732,16 @@ class _PostgresConnection:
             from psycopg.rows import dict_row
         except ImportError as exc:
             raise RuntimeError("Install psycopg to use KBEAM_AUTH_STORE_BACKEND=postgres") from exc
-        self._conn = psycopg.connect(dsn, row_factory=dict_row)
+        self._conn = psycopg.connect(dsn, row_factory=dict_row, autocommit=True)
 
     def execute(self, sql: str, params: tuple = ()):
         return self._conn.execute(sql.replace("?", "%s"), params)
 
     def commit(self) -> None:
         self._conn.commit()
+
+    def rollback(self) -> None:
+        self._conn.rollback()
 
 
 class PostgresStore(SQLiteStore):
@@ -621,6 +750,30 @@ class PostgresStore(SQLiteStore):
         self._conn = _PostgresConnection(dsn)
         self.rate_events: dict[str, list[float]] = {}
         self._migrate()
+
+    @contextmanager
+    def atomic(self):
+        with self.lock:
+            outer = getattr(self, "_transaction_depth", 0) == 0
+            if outer:
+                self._conn.execute("begin")
+            self._transaction_depth = getattr(self, "_transaction_depth", 0) + 1
+            try:
+                if outer:
+                    # Stable per-database authority lock, shared by every mutation.
+                    self._conn.execute("select pg_advisory_xact_lock(720072, 1)")
+                yield
+                if outer:
+                    self._conn.commit()
+            except BaseException:
+                if outer:
+                    self._conn.rollback()
+                raise
+            finally:
+                self._transaction_depth -= 1
+
+    def _now(self):
+        return self._one("select clock_timestamp() as now")["now"]
 
     def _migrate(self) -> None:
         statements = [
@@ -690,10 +843,10 @@ class PostgresStore(SQLiteStore):
             "create index if not exists sessions_expires_at_idx on sessions (expires_at)",
             "create index if not exists audit_log_created_at_idx on audit_log (created_at)",
         ]
-        with self.lock:
+        with self.atomic():
             for statement in statements:
                 self._conn.execute(statement)
-            self._conn.commit()
+            self._commit()
 
 
 def create_store(settings: Settings) -> AuthStore:
