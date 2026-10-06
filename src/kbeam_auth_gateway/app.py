@@ -293,8 +293,9 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
     @app.get("/api/health")
     def health():
         errors = settings.validate()
-        return {
-            "ok": not errors,
+        datastore_ready = store.is_ready()
+        result = {
+            "ok": not errors and datastore_ready,
             "serverTime": isoformat_utc(utc_now()),
             "config": {
                 "ok": not errors,
@@ -302,6 +303,9 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
                 "errors": errors,
             },
         }
+        if not datastore_ready:
+            return JSONResponse(status_code=HTTPStatus.SERVICE_UNAVAILABLE, content=result)
+        return result
 
     @app.get("/", response_class=HTMLResponse)
     @app.get("/demo", response_class=HTMLResponse)

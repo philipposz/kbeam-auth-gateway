@@ -17,6 +17,7 @@ from .time import isoformat_utc, utc_now
 
 
 class AuthStore(Protocol):
+    def is_ready(self) -> bool: ...
     def create_ticket_if_capacity(self, ticket: TicketRecord, limit: int) -> bool: ...
     def replace_challenge(self, challenge: ChallengeRecord, approve_token: str) -> TicketRecord: ...
     def finalize_approval(
@@ -187,6 +188,9 @@ class InMemoryStore(AtomicOperations):
 
     def _now(self):
         return utc_now()
+
+    def is_ready(self) -> bool:
+        return True
 
     def bootstrap(self, settings: Settings) -> None:
         with self.lock:
@@ -368,6 +372,13 @@ class SQLiteStore(AtomicOperations):
 
     def _now(self):
         return utc_now()
+
+    def is_ready(self) -> bool:
+        try:
+            self._one("select 1 from tickets, challenges, sessions, wallets, audit_log limit 0")
+            return True
+        except sqlite3.Error:
+            return False
 
     def _commit(self):
         if not getattr(self, "_transaction_depth", 0):
@@ -732,16 +743,61 @@ class _PostgresConnection:
             from psycopg.rows import dict_row
         except ImportError as exc:
             raise RuntimeError("Install psycopg to use KBEAM_AUTH_STORE_BACKEND=postgres") from exc
-        self._conn = psycopg.connect(dsn, row_factory=dict_row, autocommit=True)
+        self._dsn, self._psycopg, self._row_factory = dsn, psycopg, dict_row
+        self._conn = self._connect()
+
+    def _connect(self):
+        # psycopg bounds each configured address attempt, including the
+        # read-write session check. Never repeat application SQL here.
+        return self._psycopg.connect(
+            self._dsn, row_factory=self._row_factory, autocommit=True,
+            connect_timeout=5, target_session_attrs="read-write",
+        )
+
+    def _require_primary(self, connection) -> None:
+        try:
+            row = connection.execute(
+                "select not pg_is_in_recovery() and "
+                "current_setting('transaction_read_only') = 'off' as writable"
+            ).fetchone()
+            if not row["writable"]:
+                raise RuntimeError("Authentication datastore is not a writable primary")
+        except BaseException:
+            connection.close()
+            raise
+
+    def ensure_ready(self) -> None:
+        # Called only before a new outer transaction or standalone read.
+        # A failed operation is propagated; only a later operation reconnects.
+        if self._conn.closed:
+            self._conn = self._connect()
+        else:
+            self._require_primary(self._conn)
 
     def execute(self, sql: str, params: tuple = ()):
-        return self._conn.execute(sql.replace("?", "%s"), params)
+        try:
+            return self._conn.execute(sql.replace("?", "%s"), params)
+        except self._psycopg.Error as exc:
+            if (self._conn.closed or isinstance(exc, (self._psycopg.OperationalError,
+                                                      self._psycopg.InterfaceError))
+                    or exc.sqlstate == "25006"):
+                self._conn.close()
+            raise
 
     def commit(self) -> None:
-        self._conn.commit()
+        try:
+            self._conn.commit()
+        except self._psycopg.Error:
+            self._conn.close()
+            raise
 
     def rollback(self) -> None:
-        self._conn.rollback()
+        # Rollback must neither reconnect nor hide an uncertain commit.
+        if not self._conn.closed:
+            try:
+                self._conn.rollback()
+            except self._psycopg.Error:
+                self._conn.close()
 
 
 class PostgresStore(SQLiteStore):
@@ -756,6 +812,7 @@ class PostgresStore(SQLiteStore):
         with self.lock:
             outer = getattr(self, "_transaction_depth", 0) == 0
             if outer:
+                self._conn.ensure_ready()
                 self._conn.execute("begin")
             self._transaction_depth = getattr(self, "_transaction_depth", 0) + 1
             try:
@@ -774,6 +831,27 @@ class PostgresStore(SQLiteStore):
 
     def _now(self):
         return self._one("select clock_timestamp() as now")["now"]
+
+    def _one(self, sql, params=()):
+        with self.lock:
+            if not getattr(self, "_transaction_depth", 0):
+                self._conn.ensure_ready()
+            return self._conn.execute(sql, params).fetchone()
+
+    def _all(self, sql, params=()):
+        with self.lock:
+            if not getattr(self, "_transaction_depth", 0):
+                self._conn.ensure_ready()
+            return self._conn.execute(sql, params).fetchall()
+
+    def is_ready(self) -> bool:
+        import psycopg
+
+        try:
+            self._one("select 1 from tickets, challenges, sessions, wallets, audit_log limit 0")
+            return True
+        except (psycopg.Error, RuntimeError):
+            return False
 
     def _migrate(self) -> None:
         statements = [

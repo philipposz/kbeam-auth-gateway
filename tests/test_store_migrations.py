@@ -89,6 +89,9 @@ class _PostgresConnectionDouble:
     def commit(self) -> None:
         self.commits += 1
 
+    def ensure_ready(self) -> None:
+        pass
+
     def rollback(self) -> None:
         pass
 

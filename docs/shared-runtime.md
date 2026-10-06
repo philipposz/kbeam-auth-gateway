@@ -15,6 +15,16 @@ challenge bytes, signature verifier, cookies, public API and per-process rate
 limits retain their existing contracts. Event streams observe shared state on
 their existing one-second polling interval.
 
+After a PostgreSQL session is lost, the affected operation fails without any
+SQL or commit retry. A later independent operation may reconnect using the
+configured connection string, with a five-second timeout per address attempt,
+and must select a writable primary. Reconnection never reruns schema migration
+or bootstrap. A lost commit acknowledgement remains uncertain: inspect the
+shared state before deciding on any new action. `/health` and `/api/health`
+check the actual datastore tables and, for PostgreSQL, the writable-primary
+binding; unavailable storage returns HTTP 503 with `ok: false`. Healthy responses
+and the existing SQLite and memory backends retain their response format.
+
 ## Explicit state transfer
 
 Stop writers for the selected source authority before the final export, and keep

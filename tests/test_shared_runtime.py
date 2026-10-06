@@ -4,6 +4,7 @@ import copy
 import hashlib
 import multiprocessing
 import os
+import socket
 import sqlite3
 import threading
 import time
@@ -59,14 +60,14 @@ def pg_database():
 
         def stores():
             store = PostgresStore(make_conninfo(dsn, dbname=name))
-            connections.append(store._conn._conn)
+            connections.append(store._conn)
             return store
 
         try:
             yield stores, make_conninfo(dsn, dbname=name)
         finally:
             for connection in connections:
-                connection.close()
+                connection._conn.close()
             admin.execute(sql.SQL("drop database {}").format(sql.Identifier(name)))
 
 
@@ -99,6 +100,168 @@ def _ticket(identifier):
     return TicketRecord(ticketId=identifier, pollToken="synthetic_poll", approveToken="synthetic_approve",
                         approveURL="kbeam://synthetic", qrSvg="synthetic", status="pending",
                         issuedAt=utc_now(), expiresAt=utc_after(300))
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_health_preserves_healthy_response_and_checks_sqlite(backend, tmp_path):
+    store = InMemoryStore() if backend == "memory" else SQLiteStore(str(tmp_path / "health.sqlite3"))
+    with TestClient(create_app(settings=_settings(allowed_wallets=()), store=store)) as client:
+        for path in ("/health", "/api/health"):
+            response = client.get(path)
+            assert response.status_code == 200
+            assert set(response.json()) == {"ok", "serverTime", "config"}
+            assert response.json()["ok"] is True
+        if backend == "sqlite":
+            store._conn.close()
+            response = client.get("/health")
+            assert response.status_code == 503
+            assert response.json()["ok"] is False
+            assert response.json()["config"]["ok"] is True
+
+
+def test_pg_session_loss_health_unready_then_new_operation_recovers(pg_database, monkeypatch):
+    factory, dsn = pg_database
+    store = factory()
+    with TestClient(create_app(settings=_settings(allowed_wallets=()), store=store)) as client:
+        assert client.get("/health").status_code == 200
+        old_pid = store._conn._conn.info.backend_pid
+        with psycopg.connect(dsn, autocommit=True) as observer:
+            assert observer.execute("select pg_terminate_backend(%s)", (old_pid,)).fetchone()[0]
+        connections = []
+        connect = psycopg.connect
+
+        def open_connection(*args, **kwargs):
+            connections.append(kwargs)
+            return connect(*args, **kwargs)
+
+        monkeypatch.setattr(psycopg, "connect", open_connection)
+        failed = client.get("/api/health")
+        assert failed.status_code == 503 and failed.json()["ok"] is False
+        assert failed.json()["config"]["ok"] is True
+        assert connections == []  # The failed probe itself is never replayed.
+        recovered = client.get("/health")
+        assert recovered.status_code == 200 and recovered.json()["ok"] is True
+        assert len(connections) == 1
+        assert connections[0]["connect_timeout"] == 5
+        assert connections[0]["target_session_attrs"] == "read-write"
+        assert store._conn._conn.info.backend_pid != old_pid
+        assert store.create_ticket_if_capacity(_ticket("after_session_loss"), 2)
+        assert store.get_ticket("after_session_loss") is not None
+
+
+def test_pg_session_loss_during_approval_never_replays_writes(pg_database, monkeypatch):
+    factory, _ = pg_database
+    first, second = factory(), factory()
+    settings = _settings(allowed_wallets=(_address(_private_key()),))
+    with TestClient(create_app(settings=settings, store=first)) as client:
+        ticket, public_challenge, _ = _flow(client, first)
+    challenge = first.get_challenge(public_challenge["challengeId"])
+    session = _session(challenge)
+    create_session = first.create_session
+    calls = []
+    old_pid = first._conn._conn.info.backend_pid
+
+    def lose_connection(value):
+        calls.append(value.sessionId)
+        create_session(value)
+        assert second._conn._conn.execute(
+            "select pg_terminate_backend(%s)", (old_pid,)
+        ).fetchone()["pg_terminate_backend"]
+
+    monkeypatch.setattr(first, "create_session", lose_connection)
+    with pytest.raises(psycopg.Error):
+        first.finalize_approval(challenge, settings, session)
+    assert calls == [session.sessionId]
+    assert second.get_session(session.sessionId) is None
+    assert second.get_ticket(ticket["ticketId"]).status == "pending"
+    assert second.get_challenge(challenge.challengeId) == challenge
+    assert first.create_ticket_if_capacity(_ticket("new_independent_operation"), 10)
+    assert first._conn._conn.info.backend_pid != old_pid
+    assert calls == [session.sessionId]
+
+
+def test_pg_lost_commit_ack_remains_uncertain_without_replay(pg_database, monkeypatch):
+    factory, _ = pg_database
+    first, second = factory(), factory()
+    settings = _settings(allowed_wallets=(_address(_private_key()),))
+    with TestClient(create_app(settings=settings, store=first)) as client:
+        ticket, public_challenge, _ = _flow(client, first)
+    challenge = first.get_challenge(public_challenge["challengeId"])
+    session = _session(challenge)
+    commit = first._conn.commit
+    commits = []
+
+    def lost_ack():
+        commits.append("commit")
+        commit()
+        first._conn._conn.close()
+        raise psycopg.OperationalError("synthetic lost commit acknowledgement")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(first._conn, "commit", lost_ack)
+        with pytest.raises(psycopg.OperationalError, match="synthetic lost commit"):
+            first.finalize_approval(challenge, settings, session)
+    assert commits == ["commit"]
+    assert second.get_ticket(ticket["ticketId"]).status == "approved"
+    actual = second.get_session(session.sessionId)
+    assert actual.model_dump(exclude={"issuedAt", "expiresAt"}) == session.model_dump(
+        exclude={"issuedAt", "expiresAt"}
+    )
+    assert isoformat_utc(actual.issuedAt) == isoformat_utc(session.issuedAt)
+    assert isoformat_utc(actual.expiresAt) == isoformat_utc(session.expiresAt)
+    assert second.get_challenge(challenge.challengeId) is None
+    assert first.get_ticket(ticket["ticketId"]).status == "approved"
+    assert first._one("select count(*) as count from sessions")["count"] == 1
+    assert commits == ["commit"]
+
+
+def test_pg_readiness_rejects_readonly_session_and_missing_schema(pg_database):
+    factory, _ = pg_database
+    store = factory()
+    old_pid = store._conn._conn.info.backend_pid
+    store._conn._conn.execute("set default_transaction_read_only = on")
+    assert not store.is_ready()
+    assert store._conn._conn.closed
+    assert store.is_ready()
+    assert store._conn._conn.info.backend_pid != old_pid
+    store._execute("drop table audit_log")
+    assert not store.is_ready()
+    # Recovery never migrates or bootstraps a changed/missing schema.
+    assert not store.is_ready()
+
+
+def test_pg_new_connection_bounds_stalled_first_host_before_writable_host(pg_database):
+    factory, dsn = pg_database
+    store = factory()
+    host = socket.socket()
+    host.bind(("127.0.0.1", 0))
+    host.listen(1)
+    port = host.getsockname()[1]
+    accepted, release = threading.Event(), threading.Event()
+
+    def stall():
+        with host, host.accept()[0] as connection:
+            connection.recv(8)  # Accept TCP, but never answer SSL/authentication.
+            accepted.set()
+            release.wait(10)
+
+    thread = threading.Thread(target=stall)
+    thread.start()
+    store._conn._dsn = make_conninfo(
+        dsn, host="127.0.0.1,127.0.0.1", port=f"{port},{store._conn._conn.info.port}",
+        sslmode="prefer",
+    )
+    store._conn._conn.close()
+    started = time.monotonic()
+    try:
+        assert store.is_ready()
+        assert accepted.is_set()
+        assert 4 <= time.monotonic() - started < 8
+        assert store.create_ticket_if_capacity(_ticket("second_host"), 1)
+    finally:
+        release.set()
+        thread.join(timeout=10)
+        assert not thread.is_alive()
 
 
 @pytest.mark.parametrize("backend", ["memory", "sqlite", "postgres"])
