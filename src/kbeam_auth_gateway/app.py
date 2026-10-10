@@ -10,6 +10,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
 from .config import Settings
 from .models import (
@@ -362,7 +363,6 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
         poll_token: Annotated[str, Query(alias="pollToken")],
     ):
         require_rate(request, "ticket_poll", settings.rate_limit_ticket_poll)
-        store.purge_expired()
         ticket = store.get_ticket(ticket_id)
         if not ticket:
             raise _error(HTTPStatus.NOT_FOUND, "device_login_ticket_not_found")
@@ -390,8 +390,8 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
         request: Request,
         poll_token: Annotated[str, Query(alias="pollToken")],
     ):
-        require_rate(request, "ticket_events", settings.rate_limit_ticket_events)
-        ticket = store.get_ticket(ticket_id)
+        await run_in_threadpool(require_rate, request, "ticket_events", settings.rate_limit_ticket_events)
+        ticket = await run_in_threadpool(store.get_ticket, ticket_id)
         if not ticket:
             raise _error(HTTPStatus.NOT_FOUND, "device_login_ticket_not_found")
         if ticket.pollToken != poll_token:
@@ -402,7 +402,7 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
             while True:
                 if await request.is_disconnected():
                     break
-                current = store.get_ticket(ticket_id)
+                current = await run_in_threadpool(store.get_ticket, ticket_id)
                 if not current:
                     yield "event: expired\ndata: {\"ok\":false,\"error\":\"device_login_ticket_expired\"}\n\n"
                     break
@@ -412,7 +412,7 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
                     "session": None,
                 }
                 if current.status == "approved" and current.sessionId:
-                    session = store.get_session(current.sessionId)
+                    session = await run_in_threadpool(store.get_session, current.sessionId)
                     if session:
                         payload["session"] = _session_view(session, organization_slug=settings.service_slug)
                 if current.status != last_status:
@@ -434,7 +434,6 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
         ticket_id: str,
         approve_token: Annotated[str, Query(alias="approveToken")],
     ):
-        store.purge_expired()
         ticket = store.get_ticket(ticket_id)
         if not ticket:
             raise _error(HTTPStatus.NOT_FOUND, "device_login_ticket_not_found")
@@ -456,7 +455,6 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
         from .models import ChallengeRecord
 
         require_rate(request, "challenge", settings.rate_limit_challenge)
-        store.purge_expired()
         ticket = store.get_ticket(ticket_id)
         if not ticket:
             raise _error(HTTPStatus.NOT_FOUND, "device_login_ticket_not_found")
@@ -506,7 +504,6 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
         from .models import SessionRecord
 
         require_rate(request, "approve", settings.rate_limit_approve)
-        store.purge_expired()
         ticket = store.get_ticket(ticket_id)
         if not ticket:
             raise _error(HTTPStatus.NOT_FOUND, "device_login_ticket_not_found")
@@ -573,7 +570,6 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
 
     @app.get("/api/auth/session", response_model=SessionResponse)
     def get_session(request: Request):
-        store.purge_expired()
         session_id = current_session_id(request)
         if not session_id:
             raise _error(HTTPStatus.UNAUTHORIZED, "auth_session_required")
@@ -584,7 +580,6 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
 
     @app.get("/api/auth/validate", status_code=HTTPStatus.NO_CONTENT)
     def validate_session(request: Request):
-        store.purge_expired()
         session_id = current_session_id(request)
         if not session_id or not store.get_session(session_id):
             raise _error(HTTPStatus.UNAUTHORIZED, "auth_session_required")

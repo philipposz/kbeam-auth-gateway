@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import copy
 import hashlib
 import multiprocessing
@@ -18,6 +19,8 @@ import pytest
 from fastapi.testclient import TestClient
 from psycopg import sql
 from psycopg.conninfo import make_conninfo
+from starlette.exceptions import HTTPException
+from starlette.requests import Request
 from test_auth_flow import (
     _address,
     _private_key,
@@ -29,7 +32,13 @@ from test_auth_flow import (
 import kbeam_auth_gateway.app as app_module
 from kbeam_auth_gateway.app import create_app
 from kbeam_auth_gateway.models import SessionRecord, TicketRecord
-from kbeam_auth_gateway.store import InMemoryStore, PostgresStore, SQLiteStore, StoreTransitionError
+from kbeam_auth_gateway.store import (
+    InMemoryStore,
+    PostgresStore,
+    SQLiteStore,
+    StoreTransitionError,
+    _wallet_record,
+)
 from kbeam_auth_gateway.time import isoformat_utc, utc_after, utc_now
 from tools.state_transfer import (
     digest,
@@ -361,7 +370,7 @@ def test_pg_rechecks_after_signature_verification(pg_database, monkeypatch, chan
             assert second.get_challenge(challenge["challengeId"]) is None
 
 
-def test_pg_clock_is_fresh_after_advisory_lock_wait(pg_database):
+def test_pg_clock_is_fresh_after_wallet_row_lock_wait(pg_database):
     factory, dsn = pg_database
     first = factory()
     settings = _settings(allowed_wallets=(_address(_private_key()),))
@@ -373,17 +382,17 @@ def test_pg_clock_is_fresh_after_advisory_lock_wait(pg_database):
                    (isoformat_utc(challenge.expiresAt), challenge.challengeId))
     with psycopg.connect(dsn, autocommit=True) as blocker, psycopg.connect(dsn, autocommit=True) as observer:
         blocker.execute("begin")
-        blocker.execute("select pg_advisory_xact_lock(720072,1)")
+        blocker.execute("select address from wallets where address=%s for update", (challenge.address,))
         with ThreadPoolExecutor(1) as executor:
             future = executor.submit(first.finalize_approval, challenge, settings, _session(challenge))
             deadline = time.monotonic() + 3
             while time.monotonic() < deadline:
                 waiting = observer.execute("select wait_event from pg_stat_activity where pid = %s",
                                            (first._conn._conn.info.backend_pid,)).fetchone()[0]
-                if waiting == "advisory":
+                if waiting in {"transactionid", "tuple"}:
                     break
                 time.sleep(0.01)
-            assert waiting == "advisory"
+            assert waiting in {"transactionid", "tuple"}
             time.sleep(0.35)
             blocker.execute("commit")
             with pytest.raises(StoreTransitionError):
@@ -520,6 +529,204 @@ def test_pg_get_session_checks_expiry_without_purge(pg_database, monkeypatch):
     first.create_session(session)
     monkeypatch.setattr(first, "purge_expired", lambda: None)
     assert first.get_session(session.sessionId) is None
+
+
+def test_pg_addressed_expiry_reads_and_cap_do_not_require_cleanup(pg_database, monkeypatch):
+    factory, _ = pg_database
+    store = factory()
+    settings = _settings(allowed_wallets=(_address(_private_key()),))
+    with TestClient(create_app(settings=settings, store=store)) as client:
+        ticket, public_challenge, _ = _flow(client, store)
+    challenge = store.get_challenge(public_challenge["challengeId"])
+    session = _session(challenge)
+    store.create_session(session)
+    expired = isoformat_utc(utc_now() - timedelta(seconds=1))
+    store._execute("update tickets set expires_at = ?", (expired,))
+    store._execute("update challenges set expires_at = ?", (expired,))
+    store._execute("update sessions set expires_at = ?", (expired,))
+    approved = _ticket("approved_expired")
+    approved.status = "approved"
+    approved.expiresAt = utc_now() - timedelta(seconds=1)
+    store.create_ticket(approved)
+
+    def forbidden_cleanup():
+        pytest.fail("an addressed read or capacity check must not purge unrelated state")
+
+    monkeypatch.setattr(store, "purge_expired", forbidden_cleanup)
+    assert store.get_ticket(ticket["ticketId"]) is None
+    assert store.get_ticket(approved.ticketId).status == "approved"
+    assert store.get_challenge(challenge.challengeId) is None
+    assert store.get_session(session.sessionId) is None
+    assert store.pending_ticket_count() == 0
+    assert store.create_ticket_if_capacity(_ticket("next_pending"), 1)
+    assert not store.create_ticket_if_capacity(_ticket("over_cap"), 1)
+    assert store._one("select count(*) as count from tickets")["count"] == 3
+    assert store._one("select count(*) as count from challenges")["count"] == 1
+    assert store._one("select count(*) as count from sessions")["count"] == 1
+
+
+def test_pg_cleanup_is_bounded_and_skips_locked_tickets(pg_database):
+    factory, dsn = pg_database
+    store = factory()
+    for n in range(130):
+        ticket = _ticket(f"expired_{n:03}")
+        ticket.expiresAt = utc_now() - timedelta(seconds=10)
+        store.create_ticket(ticket)
+    approved = _ticket("approved_expired")
+    approved.status = "approved"
+    approved.expiresAt = utc_now() - timedelta(seconds=10)
+    store.create_ticket(approved)
+    with psycopg.connect(dsn, autocommit=True) as blocker:
+        blocker.execute("begin")
+        blocker.execute("select * from tickets where ticket_id='expired_000' for update")
+        store.purge_expired()
+        remaining = store._all("select ticket_id from tickets order by ticket_id")
+        assert [row["ticket_id"] for row in remaining] == [
+            "approved_expired", "expired_000", "expired_129",
+        ]
+        blocker.execute("commit")
+    store.purge_expired()
+    assert store._one("select count(*) as count from tickets")["count"] == 1
+
+
+@pytest.mark.parametrize("write_kind", ["upsert", "update"])
+def test_pg_wallet_return_matches_committed_record_and_unrelated_ticket_progresses(pg_database, write_kind):
+    factory, dsn = pg_database
+    first, second = factory(), factory()
+    wallet = _wallet_record("kaspa:synthetic", label="original")
+    wallet.createdAt = wallet.updatedAt = utc_now() - timedelta(days=1)
+    created = first.upsert_wallet(wallet)
+    assert isoformat_utc(created.createdAt) == isoformat_utc(wallet.createdAt)
+    assert created == second.get_wallet(wallet.address)
+    with psycopg.connect(dsn, autocommit=True) as blocker, psycopg.connect(dsn, autocommit=True) as observer:
+        blocker.execute("begin")
+        blocker.execute("select * from wallets where address=%s for update", (wallet.address,))
+        with ThreadPoolExecutor(1) as executor:
+            started_at = isoformat_utc(utc_now())
+            if write_kind == "upsert":
+                future = executor.submit(first.upsert_wallet, _wallet_record(wallet.address, label="changed"))
+            else:
+                future = executor.submit(first.update_wallet, wallet.address, label="changed")
+            try:
+                deadline = time.monotonic() + 3
+                while time.monotonic() < deadline:
+                    waiting = observer.execute("select wait_event from pg_stat_activity where pid=%s",
+                                               (first._conn._conn.info.backend_pid,)).fetchone()[0]
+                    if waiting in {"transactionid", "tuple"}:
+                        break
+                    time.sleep(0.01)
+                assert waiting in {"transactionid", "tuple"}
+                # A different key can commit while this wallet write is waiting.
+                assert second.create_ticket_if_capacity(_ticket("unrelated"), 1)
+                # Commit a newer timestamp while our writer is still blocked.
+                # Its eventual update must not move metadata time backwards.
+                while isoformat_utc(utc_now()) == started_at:
+                    assert time.monotonic() < deadline
+                    time.sleep(0.01)
+                intervening_at = isoformat_utc(utc_now())
+                blocker.execute("update wallets set updated_at=%s where address=%s",
+                                (intervening_at, wallet.address))
+            finally:
+                blocker.execute("commit")
+            updated = future.result(timeout=3)
+    assert updated.createdAt == created.createdAt and updated.label == "changed"
+    assert isoformat_utc(updated.updatedAt) >= intervening_at
+    assert updated == second.get_wallet(wallet.address)
+
+
+def test_pg_concurrent_initial_wallet_upserts_preserve_winning_created_at(pg_database, monkeypatch):
+    factory, _ = pg_database
+    first, second = factory(), factory()
+    absent = threading.Barrier(2)
+    wallets = [_wallet_record("kaspa:new", label=label) for label in ("first", "second")]
+    for n, (store, wallet) in enumerate(zip((first, second), wallets, strict=True)):
+        wallet.createdAt = wallet.updatedAt = utc_now() - timedelta(days=n + 1)
+        original = store.get_wallet
+
+        def get_wallet(address, original=original):
+            row = original(address)
+            if row is None:
+                absent.wait(timeout=3)
+            return row
+
+        monkeypatch.setattr(store, "get_wallet", get_wallet)
+    with ThreadPoolExecutor(2) as executor:
+        futures = [executor.submit(store.upsert_wallet, wallet)
+                   for store, wallet in zip((first, second), wallets, strict=True)]
+        results = [future.result(timeout=5) for future in futures]
+    assert results[0].createdAt == results[1].createdAt
+    assert first.get_wallet("kaspa:new").createdAt == results[0].createdAt
+
+
+def test_sse_reads_and_rate_limit_audit_never_block_event_loop(monkeypatch):
+    store = InMemoryStore()
+    ticket = _ticket("sse_approved")
+    ticket.status, ticket.sessionId = "approved", "sse_session"
+    store.create_ticket(ticket)
+    store.create_session(SessionRecord(
+        sessionId=ticket.sessionId, address="kaspa:synthetic", network="mainnet",
+        publicKey="synthetic", issuedAt=utc_now(), expiresAt=utc_after(300), challengeId="synthetic",
+    ))
+    app = create_app(settings=_settings(allowed_wallets=()), store=store)
+    endpoint = next(route.endpoint for route in app.routes
+                    if getattr(route, "path", "") == "/api/auth/device-login/{ticket_id}/events")
+    entered, release = threading.Event(), threading.Event()
+    loop_thread = threading.get_ident()
+    original_ticket, original_session = store.get_ticket, store.get_session
+    original_audit = store.add_audit
+    seen = []
+
+    def get_ticket(identifier):
+        assert threading.get_ident() != loop_thread
+        entered.set()
+        assert release.wait(2), "event loop did not advance while the read waited"
+        seen.append("ticket")
+        return original_ticket(identifier)
+
+    def get_session(identifier):
+        assert threading.get_ident() != loop_thread
+        seen.append("session")
+        return original_session(identifier)
+
+    def audit(*args, **kwargs):
+        assert threading.get_ident() != loop_thread
+        seen.append("audit")
+        return original_audit(*args, **kwargs)
+
+    monkeypatch.setattr(store, "get_ticket", get_ticket)
+    monkeypatch.setattr(store, "get_session", get_session)
+    monkeypatch.setattr(store, "add_audit", audit)
+
+    async def exercise():
+        request = Request({"type": "http", "method": "GET", "path": "/events", "headers": [],
+                           "client": ("127.0.0.1", 1), "scheme": "http", "server": ("test", 80)})
+
+        async def connected():
+            return False
+
+        monkeypatch.setattr(request, "is_disconnected", connected)
+
+        async def advance_loop():
+            while not entered.is_set():
+                await asyncio.sleep(0)
+            release.set()
+
+        progress = asyncio.create_task(advance_loop())
+        try:
+            response = await endpoint(ticket.ticketId, request, ticket.pollToken)
+            body = "".join([part async for part in response.body_iterator])
+            assert "event: approved" in body and "sse_session" in body
+            await progress
+        finally:
+            release.set()
+            progress.cancel()
+        monkeypatch.setattr(store, "check_rate_limit", lambda *args, **kwargs: False)
+        with pytest.raises(HTTPException) as exc:
+            await endpoint(ticket.ticketId, request, ticket.pollToken)
+        assert exc.value.status_code == 429
+
+    asyncio.run(exercise())
+    assert seen == ["ticket", "ticket", "session", "audit"]
 
 
 def test_sqlite_readonly_transfer_roundtrip_empty_and_rollback_cas(pg_database, tmp_path):

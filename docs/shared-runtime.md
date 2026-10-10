@@ -1,19 +1,26 @@
 # Shared authentication runtime
 
-PostgreSQL stores for the same authentication authority share the database-wide
-transaction lock. Ticket capacity, challenge replacement, approval or denial,
-wallet changes and bootstrap participate in that lock. Keep separate application
-authorities in separate databases. Backend selection, existing schema migration
-and the default SQLite backend are unchanged.
+PostgreSQL stores for the same authentication authority serialize pending-ticket
+capacity checks and insertion with a database-wide transaction lock. Other
+runtime transitions lock only their ticket, challenge and wallet rows, in that
+order. Each process retains one exclusive database connection; rate-limit state
+has a separate local lock. Keep separate application authorities in separate
+databases. Backend selection, existing startup schema provisioning and the default
+SQLite backend are unchanged.
 
 Signature verification runs outside the transaction. Final approval rechecks the
 exact challenge, current pending ticket, their binding and expiry, and the current
-wallet permission after acquiring the lock. PostgreSQL reads `clock_timestamp()`
-after waiting for the lock. Session insertion, ticket transition and challenge
+wallet permission after acquiring the locks. PostgreSQL reads `clock_timestamp()`
+after all row-lock waits. Session insertion, ticket transition and challenge
 consumption commit together. An expired session fails its direct lookup. The
 challenge bytes, signature verifier, cookies, public API and per-process rate
-limits retain their existing contracts. Event streams observe shared state on
-their existing one-second polling interval.
+limits retain their existing contracts. PostgreSQL lookups filter expiry without
+deleting unrelated rows; expired approved tickets remain readable. Ticket creation
+cleans at most 128 expired rows from each TTL table, skipping locked rows, before
+the capacity transaction. Capacity counts only unexpired pending tickets regardless
+of cleanup progress. Event streams use the existing bounded threadpool for database
+work, including rate-limit audits, and retain their one-second polling interval.
+No connection is held across an event yield or polling sleep.
 
 After a PostgreSQL session is lost, the affected operation fails without any
 SQL or commit retry. A later independent operation may reconnect using the

@@ -91,15 +91,29 @@ class StoreTransitionError(Exception):
 
 
 class AtomicOperations:
+    def _lock_capacity(self) -> None:
+        pass
+
+    def _ticket_for_update(self, ticket_id: str) -> TicketRecord | None:
+        return self.get_ticket(ticket_id)
+
+    def _challenge_for_update(self, challenge_id: str) -> ChallengeRecord | None:
+        return self.get_challenge(challenge_id)
+
+    def _check_challenge_expiry(self, challenge: ChallengeRecord, now: datetime) -> None:
+        if challenge.expiresAt <= now:
+            raise StoreTransitionError(410, "auth_challenge_expired")
+
     def create_ticket_if_capacity(self, ticket: TicketRecord, limit: int) -> bool:
         with self.atomic():
+            self._lock_capacity()
             if self.pending_ticket_count() >= limit:
                 return False
             self.create_ticket(ticket)
             return True
 
     def _pending_ticket(self, ticket_id: str) -> TicketRecord:
-        ticket = self.get_ticket(ticket_id)
+        ticket = self._ticket_for_update(ticket_id)
         if ticket is None or ticket.expiresAt <= self._now():
             raise StoreTransitionError(404, "device_login_ticket_not_found")
         if ticket.status != "pending":
@@ -115,6 +129,12 @@ class AtomicOperations:
                 raise StoreTransitionError(410, "auth_challenge_expired")
             if ticket.challengeId:
                 self.delete_challenge(ticket.challengeId)
+            # The old challenge's row lock can also have waited.
+            now = self._now()
+            if ticket.expiresAt <= now:
+                raise StoreTransitionError(404, "device_login_ticket_not_found")
+            if challenge.expiresAt <= now:
+                raise StoreTransitionError(410, "auth_challenge_expired")
             self.create_challenge(challenge)
             ticket.challengeId = challenge.challengeId
             self.save_ticket(ticket)
@@ -129,17 +149,18 @@ class AtomicOperations:
             ticket = self._pending_ticket(expected.ticketId)
             if ticket.challengeId != expected.challengeId:
                 raise StoreTransitionError(400, "device_login_challenge_mismatch")
-            current = self.get_challenge(expected.challengeId)
-            now = self._now()  # PostgreSQL reads its clock after the authority lock wait.
+            current = self._challenge_for_update(expected.challengeId)
+            allowed = current is not None and self.is_wallet_allowed(current.address.lower(), settings)
+            # Read the database clock after ticket, challenge AND wallet lock waits.
+            now = self._now()
             if current is None:
                 raise StoreTransitionError(404, "auth_challenge_not_found")
-            if current.expiresAt <= now:
-                raise StoreTransitionError(410, "auth_challenge_expired")
+            self._check_challenge_expiry(current, now)
             if ticket.expiresAt <= now:
                 raise StoreTransitionError(404, "device_login_ticket_not_found")
             if current != expected or current.ticketId != ticket.ticketId:
                 raise StoreTransitionError(400, "device_login_challenge_mismatch")
-            if not self.is_wallet_allowed(current.address.lower(), settings):
+            if not allowed:
                 ticket.status = "denied"
                 ticket.failureReason = "auth_wallet_not_allowed"
                 self.save_ticket(ticket)
@@ -150,7 +171,7 @@ class AtomicOperations:
             if session is None:
                 return ticket, None
             if (session.challengeId != current.challengeId or session.address != current.address
-                    or session.network != current.network or session.expiresAt <= self._now()):
+                    or session.network != current.network or session.expiresAt <= now):
                 raise StoreTransitionError(410, "auth_challenge_expired")
             self.create_session(session)
             ticket.status = "approved"
@@ -343,6 +364,7 @@ class SQLiteStore(AtomicOperations):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
+        self._rate_lock = threading.Lock()
         self._conn = sqlite3.connect(self.path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self.rate_events: dict[str, list[float]] = {}
@@ -460,7 +482,7 @@ class SQLiteStore(AtomicOperations):
 
     def bootstrap(self, settings: Settings) -> None:
         with self.atomic():
-            for address in settings.allowed_wallets:
+            for address in sorted(settings.allowed_wallets):
                 wallet = _wallet_record(address, label="Bootstrap wallet", role="user")
                 self._execute(
                     "insert into wallets (address,label,role,enabled,created_at,updated_at) "
@@ -726,7 +748,7 @@ class SQLiteStore(AtomicOperations):
     def check_rate_limit(self, key: str, *, limit: int, window_seconds: int) -> bool:
         now = time.monotonic()
         cutoff = now - window_seconds
-        with self.lock:
+        with self._rate_lock:
             events = [item for item in self.rate_events.get(key, []) if item >= cutoff]
             if len(events) >= limit:
                 self.rate_events[key] = events
@@ -803,6 +825,7 @@ class _PostgresConnection:
 class PostgresStore(SQLiteStore):
     def __init__(self, dsn: str) -> None:
         self._lock = threading.RLock()
+        self._rate_lock = threading.Lock()
         self._conn = _PostgresConnection(dsn)
         self.rate_events: dict[str, list[float]] = {}
         self._migrate()
@@ -816,9 +839,6 @@ class PostgresStore(SQLiteStore):
                 self._conn.execute("begin")
             self._transaction_depth = getattr(self, "_transaction_depth", 0) + 1
             try:
-                if outer:
-                    # Stable per-database authority lock, shared by every mutation.
-                    self._conn.execute("select pg_advisory_xact_lock(720072, 1)")
                 yield
                 if outer:
                     self._conn.commit()
@@ -831,6 +851,112 @@ class PostgresStore(SQLiteStore):
 
     def _now(self):
         return self._one("select clock_timestamp() as now")["now"]
+
+    def _lock_capacity(self) -> None:
+        self._conn.execute("select pg_advisory_xact_lock(720072, 1)")
+
+    def _ticket_for_update(self, ticket_id: str) -> TicketRecord | None:
+        return self._ticket_from_row(self._one(
+            "select * from tickets where ticket_id = ? for update", (ticket_id,),
+        ))
+
+    def _challenge_for_update(self, challenge_id: str) -> ChallengeRecord | None:
+        return self._challenge_from_row(self._one(
+            "select * from challenges where challenge_id = ? for update", (challenge_id,),
+        ))
+
+    def _check_challenge_expiry(self, challenge: ChallengeRecord, now: datetime) -> None:
+        # Preserve the missing-row result of the former second-precision purge,
+        # including expiry while waiting for the wallet row.
+        if isoformat_utc(challenge.expiresAt) <= isoformat_utc(now):
+            raise StoreTransitionError(404, "auth_challenge_not_found")
+        super()._check_challenge_expiry(challenge, now)
+
+    def get_ticket(self, ticket_id: str) -> TicketRecord | None:
+        return self._ticket_from_row(self._one(
+            "select * from tickets where ticket_id = ? and (status = 'approved' or "
+            "expires_at > to_char(clock_timestamp() at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'))",
+            (ticket_id,),
+        ))
+
+    def get_challenge(self, challenge_id: str) -> ChallengeRecord | None:
+        return self._challenge_from_row(self._one(
+            "select * from challenges where challenge_id = ? and "
+            "expires_at > to_char(clock_timestamp() at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')",
+            (challenge_id,),
+        ))
+
+    def get_session(self, session_id: str) -> SessionRecord | None:
+        row = self._one(
+            "select *, clock_timestamp() as observed_at from sessions where session_id = ?",
+            (session_id,),
+        )
+        session = self._session_from_row(row)
+        return session if session and session.expiresAt > row["observed_at"] else None
+
+    def pending_ticket_count(self) -> int:
+        row = self._one(
+            "select count(*) as count from tickets where status = 'pending' and "
+            "expires_at > to_char(clock_timestamp() at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')",
+        )
+        return int(row["count"])
+
+    def purge_expired(self) -> None:
+        # Incremental cleanup at ticket creation, never a prerequisite for reads
+        # or capacity. Skip active transitions and bound each existing TTL set.
+        with self.atomic():
+            now = isoformat_utc(self._now())
+            for table, key, extra in (
+                ("tickets", "ticket_id", " and status != 'approved'"),
+                ("challenges", "challenge_id", ""),
+                ("sessions", "session_id", ""),
+            ):
+                self._execute(
+                    f"delete from {table} where {key} in (select {key} from {table} "
+                    f"where expires_at <= ?{extra} order by expires_at, {key} "
+                    "limit 128 for update skip locked)", (now,),
+                )
+
+    def get_wallet(self, address: str) -> WalletRecord | None:
+        with self.lock:
+            suffix = " for update" if getattr(self, "_transaction_depth", 0) else ""
+            return self._wallet_from_row(self._one(
+                "select * from wallets where address = ?" + suffix, (address.strip().lower(),),
+            ))
+
+    def upsert_wallet(self, wallet: WalletRecord) -> WalletRecord:
+        with self.atomic():
+            existing = self.get_wallet(wallet.address)
+            if existing is None:
+                row = self._one(
+                    "insert into wallets (address,label,role,enabled,created_at,updated_at) "
+                    "values (?,?,?,?,?,?) on conflict(address) do nothing returning *",
+                    (wallet.address, wallet.label, wallet.role, wallet.enabled,
+                     isoformat_utc(wallet.createdAt), isoformat_utc(wallet.updatedAt)),
+                )
+                if row is not None:
+                    return self._wallet_from_row(row)
+                # A confirmed conflicting insert can have created the row after
+                # our absent read. Lock it before computing the update timestamp.
+                existing = self.get_wallet(wallet.address)
+                if existing is None:
+                    raise RuntimeError("Wallet disappeared after confirmed insert conflict")
+            row = self._one(
+                "update wallets set label=?,role=?,enabled=?,updated_at=? "
+                "where address=? returning *",
+                (wallet.label, wallet.role, wallet.enabled, isoformat_utc(utc_now()), wallet.address),
+            )
+            return self._wallet_from_row(row)
+
+    def update_wallet(
+        self, address: str, *, label: str | None = None, role: str | None = None,
+        enabled: bool | None = None,
+    ) -> WalletRecord | None:
+        with self.atomic():
+            if self.get_wallet(address) is None:
+                return None
+            # The inherited DB clock read now follows the actual row-lock wait.
+            return super().update_wallet(address, label=label, role=role, enabled=enabled)
 
     def _one(self, sql, params=()):
         with self.lock:
@@ -922,6 +1048,8 @@ class PostgresStore(SQLiteStore):
             "create index if not exists audit_log_created_at_idx on audit_log (created_at)",
         ]
         with self.atomic():
+            # Preserve serialization of the existing startup-only provisioning.
+            self._lock_capacity()
             for statement in statements:
                 self._conn.execute(statement)
             self._commit()
