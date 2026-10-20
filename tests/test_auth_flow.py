@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from types import SimpleNamespace
 
+import pytest
 from coincurve import PrivateKey, keys
 from fastapi.testclient import TestClient
 
+import kbeam_auth_gateway.store as store_module
 from kbeam_auth_gateway.app import create_app
 from kbeam_auth_gateway.config import Settings
 from kbeam_auth_gateway.models import SessionRecord
@@ -445,6 +448,25 @@ def test_rate_limit_without_real_ip_keeps_previous_client_key():
     ).status_code == 201
     assert client.post("/api/auth/device-login").status_code == 201
     assert set(store.rate_events) == {"device_login:198.51.100.1", "device_login:testclient"}
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+def test_rate_limit_forgets_only_fully_expired_keys(backend, tmp_path, monkeypatch):
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(store_module, "time", SimpleNamespace(monotonic=lambda: clock["now"]))
+    store = InMemoryStore() if backend == "memory" else SQLiteStore(str(tmp_path / "auth.sqlite3"))
+
+    assert store.check_rate_limit("a:192.0.2.1", limit=1, window_seconds=60)
+    clock["now"] = 1030.0
+    assert store.check_rate_limit("b:192.0.2.2", limit=1, window_seconds=60)
+    assert not store.check_rate_limit("b:192.0.2.2", limit=1, window_seconds=60)
+    clock["now"] = 1061.0
+    assert store.check_rate_limit("c:192.0.2.3", limit=1, window_seconds=60)
+
+    assert set(store.rate_events) == {"b:192.0.2.2", "c:192.0.2.3"}
+    assert not store.check_rate_limit("b:192.0.2.2", limit=1, window_seconds=60)
+    clock["now"] = 1091.0
+    assert store.check_rate_limit("b:192.0.2.2", limit=1, window_seconds=60)
 
 
 def test_postgres_backend_requires_dsn():

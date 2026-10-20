@@ -83,6 +83,19 @@ def _wallet_record(address: str, *, label: str = "", role: str = "user", enabled
     )
 
 
+def _prune_rate_events(owner, now: float, window_seconds: int) -> None:
+    # Forget keys whose newest event left the window: their next check would
+    # discard every stored event anyway. Runs at most once per window.
+    last = getattr(owner, "_rate_pruned_at", None)
+    if last is not None and now - last < window_seconds:
+        return
+    owner._rate_pruned_at = now
+    cutoff = now - window_seconds
+    expired = [key for key, events in owner.rate_events.items() if not events or events[-1] < cutoff]
+    for key in expired:
+        del owner.rate_events[key]
+
+
 class StoreTransitionError(Exception):
     def __init__(self, status_code: int, code: str) -> None:
         super().__init__(code)
@@ -350,6 +363,7 @@ class InMemoryStore(AtomicOperations):
         now = time.monotonic()
         cutoff = now - window_seconds
         with self.lock:
+            _prune_rate_events(self, now, window_seconds)
             events = [item for item in self.rate_events.get(key, []) if item >= cutoff]
             if len(events) >= limit:
                 self.rate_events[key] = events
@@ -749,6 +763,7 @@ class SQLiteStore(AtomicOperations):
         now = time.monotonic()
         cutoff = now - window_seconds
         with self._rate_lock:
+            _prune_rate_events(self, now, window_seconds)
             events = [item for item in self.rate_events.get(key, []) if item >= cutoff]
             if len(events) >= limit:
                 self.rate_events[key] = events
