@@ -407,6 +407,46 @@ def test_rate_limit_blocks_excess_device_login_requests():
     assert blocked.json()["error"] == "rate_limit_exceeded"
 
 
+def test_rate_limit_keys_on_proxy_real_ip_not_client_forwarded_for():
+    settings = replace(
+        _settings(allowed_wallets=(), verifier_mode="demo", wallet_policy="open"),
+        rate_limit_device_login=1,
+    )
+    store = InMemoryStore()
+    client = TestClient(create_app(settings=settings, store=store))
+    proxied = {"X-Real-IP": "192.0.2.10"}
+
+    assert client.post(
+        "/api/auth/device-login",
+        headers={**proxied, "X-Forwarded-For": "198.51.100.1, 192.0.2.10"},
+    ).status_code == 201
+    # A forged first X-Forwarded-For entry no longer selects a fresh bucket.
+    blocked = client.post(
+        "/api/auth/device-login",
+        headers={**proxied, "X-Forwarded-For": "198.51.100.2, 192.0.2.10"},
+    )
+    assert blocked.status_code == 429
+    assert client.post(
+        "/api/auth/device-login", headers={"X-Real-IP": "192.0.2.11"},
+    ).status_code == 201
+    assert set(store.rate_events) == {"device_login:192.0.2.10", "device_login:192.0.2.11"}
+
+
+def test_rate_limit_without_real_ip_keeps_previous_client_key():
+    settings = replace(
+        _settings(allowed_wallets=(), verifier_mode="demo", wallet_policy="open"),
+        rate_limit_device_login=1,
+    )
+    store = InMemoryStore()
+    client = TestClient(create_app(settings=settings, store=store))
+
+    assert client.post(
+        "/api/auth/device-login", headers={"X-Forwarded-For": "198.51.100.1, 192.0.2.10"},
+    ).status_code == 201
+    assert client.post("/api/auth/device-login").status_code == 201
+    assert set(store.rate_events) == {"device_login:198.51.100.1", "device_login:testclient"}
+
+
 def test_postgres_backend_requires_dsn():
     missing_dsn = replace(
         _settings(allowed_wallets=(), verifier_mode="demo", wallet_policy="open"),

@@ -246,8 +246,13 @@ def create_app(settings: Settings | None = None, store: AuthStore | None = None)
         return JSONResponse(status_code=exc.status_code, content={"ok": False, "error": exc.code})
 
     def client_key(request: Request, scope: str) -> str:
-        forwarded_for = request.headers.get("x-forwarded-for", "")
-        ip = forwarded_for.split(",", 1)[0].strip() if forwarded_for else ""
+        # A fronting proxy overwrites X-Real-IP with the peer it accepted; the
+        # first X-Forwarded-For entry is client-supplied. The previous order is
+        # kept only for requests that carry no X-Real-IP.
+        ip = request.headers.get("x-real-ip", "").strip()
+        if not ip:
+            forwarded_for = request.headers.get("x-forwarded-for", "")
+            ip = forwarded_for.split(",", 1)[0].strip() if forwarded_for else ""
         if not ip and request.client:
             ip = request.client.host
         return f"{scope}:{ip or 'unknown'}"
