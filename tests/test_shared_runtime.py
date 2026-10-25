@@ -128,34 +128,138 @@ def test_health_preserves_healthy_response_and_checks_sqlite(backend, tmp_path):
             assert response.json()["config"]["ok"] is True
 
 
-def test_pg_session_loss_health_unready_then_new_operation_recovers(pg_database, monkeypatch):
+def _terminate(dsn, pid, connect=psycopg.connect):
+    # Waits until the backend has exited, like a primary that shut down its sessions.
+    # The observer uses the unpatched connect, so it is never counted as a reconnect.
+    with connect(dsn, autocommit=True) as observer:
+        assert observer.execute("select pg_terminate_backend(%s, 5000)", (pid,)).fetchone()[0]
+
+
+def _spy(store, monkeypatch):
+    """Record new connections and every application statement with its backend."""
+    connections, statements = [], []
+    connect, execute = psycopg.connect, store._conn.execute
+
+    def open_connection(*args, **kwargs):
+        connections.append(kwargs)
+        return connect(*args, **kwargs)
+
+    def application_sql(statement, params=()):
+        statements.append((statement, store._conn._conn.info.backend_pid))
+        return execute(statement, params)
+
+    monkeypatch.setattr(psycopg, "connect", open_connection)
+    monkeypatch.setattr(store._conn, "execute", application_sql)
+    return connections, statements
+
+
+def test_pg_first_operation_after_session_loss_reconnects_once_before_application_sql(
+    pg_database, monkeypatch,
+):
+    factory, dsn = pg_database
+    store = factory()
+    settings = _settings(allowed_wallets=())
+    with TestClient(create_app(settings=settings, store=store)) as client:
+        assert client.get("/health").status_code == 200
+        store.create_session(SessionRecord(
+            sessionId="session_synthetic", address="kaspa:synthetic", network="mainnet",
+            publicKey="synthetic", issuedAt=utc_now(), expiresAt=utc_after(300),
+            challengeId="challenge_synthetic",
+        ))
+        client.cookies.set(settings.cookie_name, "session_synthetic")
+        connections, statements = _spy(store, monkeypatch)
+        pids = [store._conn._conn.info.backend_pid]
+        for request, status in (
+            (lambda: client.get("/api/health"), 200),
+            (lambda: client.get("/api/auth/validate"), 204),
+            (lambda: client.post("/api/auth/device-login"), 201),
+        ):
+            assert request().status_code == status
+            steady = [sql for sql, _pid in statements]
+            del statements[:]
+            _terminate(dsn, pids[-1])
+            # The first operation after the loss succeeds: one reconnect, then the same
+            # application statements exactly once, all on the new verified session.
+            assert request().status_code == status
+            pids.append(store._conn._conn.info.backend_pid)
+            assert pids[-1] != pids[-2] and len(connections) == len(pids) - 1
+            assert [sql for sql, _pid in statements] == steady and steady
+            assert {pid for _sql, pid in statements} == {pids[-1]}
+            del statements[:]
+        assert all(c["connect_timeout"] == 5 for c in connections)
+        assert all(c["target_session_attrs"] == "read-write" for c in connections)
+        assert client.get("/api/health").json()["ok"] is True
+        assert len(connections) == 3
+
+
+def test_pg_failed_reconnect_fails_operation_once_without_application_sql(pg_database, monkeypatch):
     factory, dsn = pg_database
     store = factory()
     with TestClient(create_app(settings=_settings(allowed_wallets=()), store=store)) as client:
         assert client.get("/health").status_code == 200
-        old_pid = store._conn._conn.info.backend_pid
-        with psycopg.connect(dsn, autocommit=True) as observer:
-            assert observer.execute("select pg_terminate_backend(%s)", (old_pid,)).fetchone()[0]
-        connections = []
+        _terminate(dsn, store._conn._conn.info.backend_pid)
+        connections, statements = _spy(store, monkeypatch)
         connect = psycopg.connect
 
-        def open_connection(*args, **kwargs):
-            connections.append(kwargs)
-            return connect(*args, **kwargs)
+        def unavailable(*args, **kwargs):
+            connect(*args, **kwargs).close()  # Recorded by the spy, then refused.
+            raise psycopg.OperationalError("synthetic: no writable primary available")
 
-        monkeypatch.setattr(psycopg, "connect", open_connection)
+        monkeypatch.setattr(psycopg, "connect", unavailable)
         failed = client.get("/api/health")
         assert failed.status_code == 503 and failed.json()["ok"] is False
         assert failed.json()["config"]["ok"] is True
-        assert connections == []  # The failed probe itself is never replayed.
+        assert len(connections) == 1  # One reconnect per operation, never a second one.
+        assert statements == []  # No application SQL without a verified primary.
+        monkeypatch.setattr(psycopg, "connect", connect)
         recovered = client.get("/health")
         assert recovered.status_code == 200 and recovered.json()["ok"] is True
-        assert len(connections) == 1
-        assert connections[0]["connect_timeout"] == 5
-        assert connections[0]["target_session_attrs"] == "read-write"
-        assert store._conn._conn.info.backend_pid != old_pid
-        assert store.create_ticket_if_capacity(_ticket("after_session_loss"), 2)
-        assert store.get_ticket("after_session_loss") is not None
+        assert len(connections) == 2 and len(statements) == 1
+
+
+def test_pg_reconnected_session_must_pass_primary_check(pg_database, monkeypatch):
+    factory, dsn = pg_database
+    store = factory()
+    connections, statements = _spy(store, monkeypatch)
+    connect = store._conn._connect
+
+    def readonly_session():
+        connection = connect()
+        connection.execute("set default_transaction_read_only = on")
+        return connection
+
+    _terminate(dsn, store._conn._conn.info.backend_pid)
+    monkeypatch.setattr(store._conn, "_connect", readonly_session)
+    assert not store.is_ready()
+    assert len(connections) == 1 and statements == []
+    assert store._conn._conn.closed
+    monkeypatch.setattr(store._conn, "_connect", connect)
+    assert store.is_ready()
+    assert len(connections) == 2 and len(statements) == 1
+
+
+def test_pg_session_lost_after_primary_check_fails_without_replay(pg_database, monkeypatch):
+    factory, dsn = pg_database
+    store = factory()
+    assert store.create_ticket_if_capacity(_ticket("before_loss"), 10)
+    old_pid = store._conn._conn.info.backend_pid
+    connections, statements = _spy(store, monkeypatch)
+    require_primary = store._conn._require_primary
+
+    def check_then_lose(connection):
+        require_primary(connection)
+        _terminate(dsn, connection.info.backend_pid)
+
+    monkeypatch.setattr(store._conn, "_require_primary", check_then_lose)
+    with pytest.raises(psycopg.OperationalError):
+        store.get_ticket("before_loss")
+    # The application statement was sent once and is never repeated or reconnected for.
+    assert connections == [] and len(statements) == 1
+    assert store._conn._conn.closed
+    monkeypatch.setattr(store._conn, "_require_primary", require_primary)
+    assert store.get_ticket("before_loss") is not None
+    assert len(connections) == 1 and len(statements) == 2
+    assert store._conn._conn.info.backend_pid != old_pid
 
 
 def test_pg_session_loss_during_approval_never_replays_writes(pg_database, monkeypatch):
@@ -224,13 +328,12 @@ def test_pg_lost_commit_ack_remains_uncertain_without_replay(pg_database, monkey
     assert commits == ["commit"]
 
 
-def test_pg_readiness_rejects_readonly_session_and_missing_schema(pg_database):
+def test_pg_readiness_replaces_readonly_session_and_rejects_missing_schema(pg_database):
     factory, _ = pg_database
     store = factory()
     old_pid = store._conn._conn.info.backend_pid
     store._conn._conn.execute("set default_transaction_read_only = on")
-    assert not store.is_ready()
-    assert store._conn._conn.closed
+    # The read-only session fails the primary check and is replaced within the same call.
     assert store.is_ready()
     assert store._conn._conn.info.backend_pid != old_pid
     store._execute("drop table audit_log")

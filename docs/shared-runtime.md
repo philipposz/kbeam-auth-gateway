@@ -22,12 +22,17 @@ of cleanup progress. Event streams use the existing bounded threadpool for datab
 work, including rate-limit audits, and retain their one-second polling interval.
 No connection is held across an event yield or polling sleep.
 
-After a PostgreSQL session is lost, the affected operation fails without any
-SQL or commit retry. A later independent operation may reconnect using the
-configured connection string, with a five-second timeout per address attempt,
-and must select a writable primary. Reconnection never reruns schema migration
-or bootstrap. A lost commit acknowledgement remains uncertain: inspect the
-shared state before deciding on any new action. `/health` and `/api/health`
+Before the first application statement of an operation, the retained PostgreSQL
+session must pass a writable-primary check. If the session was lost, for example
+after a primary switchover, or fails that check, it is closed and the process
+reconnects once using the configured connection string, with a five-second
+timeout per address attempt, and repeats the check on the new session; only then
+does application SQL run. If the reconnect or the repeated check fails, the
+operation fails without application SQL, and a later independent operation may
+try again. Once an operation has sent application SQL, a lost session fails it
+without any SQL or commit retry. Reconnection never reruns schema migration or
+bootstrap. A lost commit acknowledgement remains uncertain: inspect the shared
+state before deciding on any new action. `/health` and `/api/health`
 check the actual datastore tables and, for PostgreSQL, the writable-primary
 binding; unavailable storage returns HTTP 503 with `ok: false`. Healthy responses
 and the existing SQLite and memory backends retain their response format.

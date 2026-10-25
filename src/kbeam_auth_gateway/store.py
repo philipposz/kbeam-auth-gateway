@@ -773,6 +773,10 @@ class SQLiteStore(AtomicOperations):
             return True
 
 
+class _NotWritablePrimary(RuntimeError):
+    pass
+
+
 class _PostgresConnection:
     def __init__(self, dsn: str) -> None:
         try:
@@ -798,18 +802,25 @@ class _PostgresConnection:
                 "current_setting('transaction_read_only') = 'off' as writable"
             ).fetchone()
             if not row["writable"]:
-                raise RuntimeError("Authentication datastore is not a writable primary")
+                raise _NotWritablePrimary("Authentication datastore is not a writable primary")
         except BaseException:
             connection.close()
             raise
 
     def ensure_ready(self) -> None:
-        # Called only before a new outer transaction or standalone read.
-        # A failed operation is propagated; only a later operation reconnects.
-        if self._conn.closed:
-            self._conn = self._connect()
-        else:
-            self._require_primary(self._conn)
+        # Called only before a new outer transaction or standalone read, so no
+        # application SQL of this operation has been sent yet. A retained
+        # session that is lost or not a writable primary is replaced at most
+        # once, and the primary check runs again on the new session before any
+        # application SQL. Application SQL is never repeated.
+        if not self._conn.closed:
+            try:
+                self._require_primary(self._conn)
+                return
+            except (self._psycopg.Error, _NotWritablePrimary):
+                pass  # The unusable session is closed; reconnect once below.
+        self._conn = self._connect()
+        self._require_primary(self._conn)
 
     def execute(self, sql: str, params: tuple = ()):
         try:
